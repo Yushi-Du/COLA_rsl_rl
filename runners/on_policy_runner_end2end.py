@@ -28,7 +28,7 @@ from rsl_rl.utils import store_code_state
 from ipdb import set_trace
 
 
-class OnPolicyRunner:
+class OnPolicyRunnerEnd2end:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
@@ -206,11 +206,11 @@ class OnPolicyRunner:
             start = time.time()
             # Rollout
             # 6_6 significantly modified: 把torch.inference_mode()换成了torch.no_grad()
-            # with torch.inference_mode():
-            with torch.no_grad():
+            with torch.inference_mode():
+            # with torch.no_grad():
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
-                    actions = self.alg.act(obs, privileged_obs)
+                    actions = self.alg.act(obs, privileged_obs, inference=True)
                     # Step the environment
                     obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
                     # Move to device
@@ -265,7 +265,7 @@ class OnPolicyRunner:
 
                 # compute returns
                 if self.training_type == "rl":
-                    self.alg.compute_returns(privileged_obs)
+                    self.alg.compute_returns(privileged_obs, inference=True)
 
             # update policy
             loss_dict = self.alg.update()

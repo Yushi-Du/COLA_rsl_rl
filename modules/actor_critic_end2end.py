@@ -13,7 +13,7 @@ from rsl_rl.utils import resolve_nn_activation
 
 import sys
 sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
-from SensorCNN import SensorCNN, TemporalSensorCNN
+from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 
 from ipdb import set_trace
 
@@ -46,7 +46,7 @@ class ActorCriticEnd2end(nn.Module):
 
         self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
         self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
-        self.actor_cnn = TemporalSensorCNN(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
 
         mlp_input_dim_a = self.mono_actor_obs_dim
         mlp_input_dim_c = self.mono_critic_obs_dim
@@ -63,7 +63,7 @@ class ActorCriticEnd2end(nn.Module):
         self.actor = nn.Sequential(*actor_layers)
 
         # Value function
-        self.critic_cnn = TemporalSensorCNN(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.critic_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
 
         critic_layers = []
         critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
@@ -126,7 +126,7 @@ class ActorCriticEnd2end(nn.Module):
         tactile_features = observations[:, :, 3:3+144]
         other_features = observations[:, :, 3+144:]
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, 3)
+        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
         return torch.cat([commands, other_features], dim=2)
     
     def critic_cnn_forward(self, observations):
@@ -135,7 +135,7 @@ class ActorCriticEnd2end(nn.Module):
         tactile_features = observations[:, :, 3:3+144]
         other_features = observations[:, :, 3+144:]
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, 3)
+        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
         return torch.cat([commands, other_features], dim=2)
     
     def process_observations(self, observations):

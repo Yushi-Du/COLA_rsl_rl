@@ -8,12 +8,13 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
+import torch.nn.functional as F
 
 from rsl_rl.utils import resolve_nn_activation
 
 import sys
 sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
-from SensorCNN import SensorCNN, TemporalSensorCNN
+from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 
 from ipdb import set_trace
 
@@ -32,6 +33,8 @@ class ActorCriticEnd2endFollowing(nn.Module):
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
         history_length: int = 6,
+        num_envs: int = 2048,
+        device="cuda:0",
         **kwargs,
     ):
         if kwargs:
@@ -43,10 +46,16 @@ class ActorCriticEnd2endFollowing(nn.Module):
         activation = resolve_nn_activation(activation)
 
         self.history_length = history_length
+        self.stage_two_steps = 5000
+        self.total_steps = 0
+        self.num_envs = num_envs
+        self.device = device
 
         self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
         self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
-        self.actor_cnn = TemporalSensorCNN(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.actor_cnn.train()
+        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
 
         mlp_input_dim_a = self.mono_actor_obs_dim
         mlp_input_dim_c = self.mono_critic_obs_dim
@@ -63,7 +72,9 @@ class ActorCriticEnd2endFollowing(nn.Module):
         self.actor = nn.Sequential(*actor_layers)
 
         # Value function
-        self.critic_cnn = TemporalSensorCNN(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.critic_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.critic_cnn.train()
+        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-4)
 
         critic_layers = []
         critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
@@ -120,43 +131,67 @@ class ActorCriticEnd2endFollowing(nn.Module):
         return self.distribution.entropy().sum(dim=-1)
     
     # 要改
-    def actor_cnn_forward(self, observations):
+    def actor_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
         commands = observations[:, :, 0:3]
         tactile_features = observations[:, :, 3:3+144]
         other_features = observations[:, :, 3+144:]
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, 3)
-        return torch.cat([commands, other_features], dim=2)
+        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+
+        final_commands = cnn_outputs
+        if self.total_steps < self.stage_two_steps:
+            if not inference:
+                self.total_steps += 1
+                print(self.total_steps)
+                self.actor_cnn_optimizer.zero_grad()
+                loss = F.mse_loss(cnn_outputs, commands)
+                loss.backward()
+                self.actor_cnn_optimizer.step()
+            final_commands = commands  # warmup时短路掉整个actor_cnn
+
+        return torch.cat([final_commands, other_features], dim=2)
     
-    def critic_cnn_forward(self, observations):
+    def critic_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
         commands = observations[:, :, 0:3]
         tactile_features = observations[:, :, 3:3+144]
         other_features = observations[:, :, 3+144:]
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, 3)
-        return torch.cat([commands, other_features], dim=2)
+        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+
+        final_commands = cnn_outputs
+        if self.total_steps < self.stage_two_steps:
+            if not inference:
+                self.total_steps += 1
+                print(self.total_steps)
+                self.critic_cnn_optimizer.zero_grad()
+                loss = F.mse_loss(cnn_outputs, commands)
+                loss.backward()
+                self.critic_cnn_optimizer.step()
+            final_commands = commands  # warmup时短路掉整个actor_cnn
+
+        return torch.cat([final_commands, other_features], dim=2)
     
-    def process_observations(self, observations):
+    def process_observations(self, observations, inference=False):
         num_envs = observations.shape[0]
         flattened_obs = observations.reshape(num_envs, self.history_length, -1)  # (num_envs, history_length, 240)
-        mlp_obs_0 = self.actor_cnn_forward(flattened_obs)  
+        mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
         total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)  # (num_envs, 96)
         
         return self.actor(total_mlp_obs)
     
-    def process_observations_critic(self, observations):
+    def process_observations_critic(self, observations, inference=False):
         num_envs = observations.shape[0]
         flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        mlp_obs_0 = self.critic_cnn_forward(flattened_obs)  
+        mlp_obs_0 = self.critic_cnn_forward(flattened_obs, inference)  
         total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
 
         return self.critic(total_mlp_obs)
 
-    def update_distribution(self, observations):
+    def update_distribution(self, observations, inference=False):
 
-        mean = self.process_observations(observations)
+        mean = self.process_observations(observations, inference)
         # compute standard deviation
         if self.noise_std_type == "scalar":
             std = self.std.expand_as(mean)
@@ -167,20 +202,20 @@ class ActorCriticEnd2endFollowing(nn.Module):
         # create distribution
         self.distribution = Normal(mean, std)
 
-    def act(self, observations, **kwargs):
-        self.update_distribution(observations)
+    def act(self, observations, inference=False, **kwargs):
+        self.update_distribution(observations, inference)
         return self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
     def act_inference(self, observations):
-        actions_mean = self.process_observations(observations)
+        actions_mean = self.process_observations(observations, inference=True)
         return actions_mean
 
-    def evaluate(self, critic_observations, **kwargs):
+    def evaluate(self, critic_observations, inference=False, **kwargs):
         # value = self.critic(critic_observations)
-        value = self.process_observations_critic(critic_observations)
+        value = self.process_observations_critic(critic_observations, inference)
         return value
 
     def load_state_dict(self, state_dict, strict=True):

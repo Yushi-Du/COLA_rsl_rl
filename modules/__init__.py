@@ -7,6 +7,7 @@
 
 from .actor_critic import ActorCritic
 from .actor_critic_end2end import ActorCriticEnd2end
+from .actor_critic_end2end_following import ActorCriticEnd2endFollowing
 from .actor_critic_transformer import ActorCriticTransformer
 from .actor_critic_recurrent import ActorCriticRecurrent
 from .normalizer import EmpiricalNormalization
@@ -17,6 +18,7 @@ from .student_teacher_recurrent import StudentTeacherRecurrent
 __all__ = [
     "ActorCritic",
     "ActorCriticEnd2end",
+    "ActorCriticEnd2endFollowing",
     "ActorCriticRecurrent",
     "EmpiricalNormalization",
     "RandomNetworkDistillation",

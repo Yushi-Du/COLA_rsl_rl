@@ -15,6 +15,9 @@ from rsl_rl.utils import resolve_nn_activation
 import sys
 sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
 from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
+from torch.utils.tensorboard import SummaryWriter
+import os 
+from datetime import datetime
 
 from ipdb import set_trace
 
@@ -50,6 +53,17 @@ class ActorCriticEnd2endFollowing(nn.Module):
         self.total_steps = 0
         self.num_envs = num_envs
         self.device = device
+
+        log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_log_dir = f"/home/yushidu/Documents/Humanoid/LeggedLab/new_backbone_logs/{log_time}"
+        actor_log_dir = os.path.join(base_log_dir, "actor_cnn")
+        critic_log_dir = os.path.join(base_log_dir, "critic_cnn")
+        os.makedirs(actor_log_dir, exist_ok=True)
+        os.makedirs(critic_log_dir, exist_ok=True)
+        self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
+        self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
+        self._actor_cnn_step = 0
+        self._critic_cnn_step = 0
 
         self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
         self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
@@ -140,14 +154,16 @@ class ActorCriticEnd2endFollowing(nn.Module):
         cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
         final_commands = cnn_outputs
-        if self.total_steps < self.stage_two_steps:
+        if self._actor_cnn_step < self.stage_two_steps:
             if not inference:
                 self.total_steps += 1
-                print(self.total_steps)
                 self.actor_cnn_optimizer.zero_grad()
                 loss = F.mse_loss(cnn_outputs, commands)
                 loss.backward()
                 self.actor_cnn_optimizer.step()
+
+                self.actor_cnn_writer.add_scalar("loss", loss.item(), self._actor_cnn_step)
+                self._actor_cnn_step += 1
             final_commands = commands  # warmup时短路掉整个actor_cnn
 
         return torch.cat([final_commands, other_features], dim=2)
@@ -161,14 +177,16 @@ class ActorCriticEnd2endFollowing(nn.Module):
         cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
         final_commands = cnn_outputs
-        if self.total_steps < self.stage_two_steps:
+        if self._critic_cnn_step < self.stage_two_steps:
             if not inference:
                 self.total_steps += 1
-                print(self.total_steps)
                 self.critic_cnn_optimizer.zero_grad()
                 loss = F.mse_loss(cnn_outputs, commands)
                 loss.backward()
                 self.critic_cnn_optimizer.step()
+
+                self.critic_cnn_writer.add_scalar("loss", loss.item(), self._critic_cnn_step)
+                self._critic_cnn_step += 1
             final_commands = commands  # warmup时短路掉整个actor_cnn
 
         return torch.cat([final_commands, other_features], dim=2)

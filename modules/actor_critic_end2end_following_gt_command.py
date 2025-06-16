@@ -22,7 +22,7 @@ from datetime import datetime
 from ipdb import set_trace
 
 
-class ActorCriticEnd2endFollowing(nn.Module):
+class ActorCriticEnd2endFollowingGtCommand(nn.Module):
     is_recurrent = False
 
     def __init__(
@@ -64,8 +64,8 @@ class ActorCriticEnd2endFollowing(nn.Module):
         self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
         self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
 
-        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
-        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
+        self.mono_actor_obs_dim = num_actor_obs - int(history_length * (144+3))
+        self.mono_critic_obs_dim = num_critic_obs - int(history_length * (144+3))
         self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
         self.actor_cnn.train()
         self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
@@ -143,13 +143,44 @@ class ActorCriticEnd2endFollowing(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
     
-    # 要改
+    # # 要改
+    # def actor_cnn_forward(self, observations, inference=False):
+    #     # observations.shape: (num_envs, history_length, 240)
+    #     commands = observations[:, :, 0:3]
+    #     # set_trace()
+    #     tactile_features = observations[:, :, 3:3+144]
+    #     other_features = observations[:, :, 3+144:]
+    #     recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
+    #     cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+
+    #     if self.env._actor_cnn_step < self.env.stage_two_steps:
+    #         # print('Here!')
+    #         if not inference:
+    #             self.total_steps += 1
+    #             self.actor_cnn_optimizer.zero_grad()
+    #             loss = F.mse_loss(cnn_outputs, commands)
+    #             loss.backward()
+    #             self.actor_cnn_optimizer.step()
+
+    #             self.actor_cnn_writer.add_scalar("loss", loss.item(), self.env._actor_cnn_step)
+    #             self.env._actor_cnn_step += 1
+    #             # print(self.env._actor_cnn_step)
+    #         final_commands = commands  # warmup时短路掉整个actor_cnn
+    #     else:
+    #         final_commands = cnn_outputs
+
+    #     self.env.predicted_tactile_command = final_commands[:, -1, :]
+
+    #     return torch.cat([final_commands, other_features], dim=2)
+    
     def actor_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
         commands = observations[:, :, 0:3]
+        commands_no_noise = observations[:, :, 3:6]
         # set_trace()
-        tactile_features = observations[:, :, 3:3+144]
-        other_features = observations[:, :, 3+144:]
+        tactile_features = observations[:, :, 6:6+144]
+        other_features = observations[:, :, 6+144:]
+        
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
@@ -158,7 +189,7 @@ class ActorCriticEnd2endFollowing(nn.Module):
             if not inference:
                 self.total_steps += 1
                 self.actor_cnn_optimizer.zero_grad()
-                loss = F.mse_loss(cnn_outputs, commands)
+                loss = F.mse_loss(cnn_outputs, commands_no_noise)
                 loss.backward()
                 self.actor_cnn_optimizer.step()
 
@@ -176,8 +207,9 @@ class ActorCriticEnd2endFollowing(nn.Module):
     def critic_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
         commands = observations[:, :, 0:3]
-        tactile_features = observations[:, :, 3:3+144]
-        other_features = observations[:, :, 3+144:]
+        commands_no_noise = observations[:, :, 3:6]
+        tactile_features = observations[:, :, 6:6+144]
+        other_features = observations[:, :, 6+144:]
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
@@ -186,7 +218,7 @@ class ActorCriticEnd2endFollowing(nn.Module):
             if not inference:
                 self.total_steps += 1
                 self.critic_cnn_optimizer.zero_grad()
-                loss = F.mse_loss(cnn_outputs, commands)
+                loss = F.mse_loss(cnn_outputs, commands_no_noise)
                 loss.backward()
                 self.critic_cnn_optimizer.step()
 

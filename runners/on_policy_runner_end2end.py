@@ -48,6 +48,7 @@ class OnPolicyRunnerEnd2end:
             self.training_type = "rl"  # 6_3: 是rl
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device
+            self.policy_cfg['env'] = self.env
         elif self.alg_cfg["class_name"] == "Distillation":
             self.training_type = "distillation"
         else:

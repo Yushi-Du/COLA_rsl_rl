@@ -8,6 +8,7 @@
 from .actor_critic import ActorCritic
 from .actor_critic_end2end import ActorCriticEnd2end
 from .actor_critic_end2end_following import ActorCriticEnd2endFollowing
+from .actor_critic_end2end_following_gt_command import ActorCriticEnd2endFollowingGtCommand
 from .actor_critic_transformer import ActorCriticTransformer
 from .actor_critic_recurrent import ActorCriticRecurrent
 from .normalizer import EmpiricalNormalization
@@ -19,6 +20,7 @@ __all__ = [
     "ActorCritic",
     "ActorCriticEnd2end",
     "ActorCriticEnd2endFollowing",
+    "ActorCriticEnd2endFollowingGtCommand",
     "ActorCriticRecurrent",
     "EmpiricalNormalization",
     "RandomNetworkDistillation",

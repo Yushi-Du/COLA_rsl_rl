@@ -8,5 +8,6 @@
 from .distillation import Distillation
 from .ppo import PPO
 from .ppo_end2end import PPO_End2end
+from .ppo_end2end_gt_command import PPO_End2endGtCommand
 
-__all__ = ["PPO", "PPO_End2end", "Distillation"]
+__all__ = ["PPO", "PPO_End2end", "PPO_End2endGtCommand", "Distillation"]

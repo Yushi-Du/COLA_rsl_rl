@@ -177,6 +177,8 @@ class ActorCriticEnd2endFollowingGtCommand(nn.Module):
         # observations.shape: (num_envs, history_length, 240)
         commands = observations[:, :, 0:3]
         commands_no_noise = observations[:, :, 3:6]
+        # print(commands[0, 5])
+        # print(commands_no_noise[0, 5])
         # set_trace()
         tactile_features = observations[:, :, 6:6+144]
         other_features = observations[:, :, 6+144:]

@@ -10,6 +10,7 @@ from .actor_critic_end2end import ActorCriticEnd2end
 from .actor_critic_end2end_following import ActorCriticEnd2endFollowing
 from .actor_critic_wbc_end2end_following import ActorCriticWbcEnd2endFollowing
 from .actor_critic_end2end_following_gt_command import ActorCriticEnd2endFollowingGtCommand
+from .actor_critic_falcon_wbc_end2end_following import ActorCriticFalconWbcEnd2endFollowing
 from .actor_critic_transformer import ActorCriticTransformer
 from .actor_critic_recurrent import ActorCriticRecurrent
 from .normalizer import EmpiricalNormalization
@@ -23,6 +24,7 @@ __all__ = [
     "ActorCriticEnd2endFollowing",
     "ActorCriticWbcEnd2endFollowing",
     "ActorCriticEnd2endFollowingGtCommand",
+    "ActorCriticFalconWbcEnd2endFollowing",
     "ActorCriticRecurrent",
     "EmpiricalNormalization",
     "RandomNetworkDistillation",

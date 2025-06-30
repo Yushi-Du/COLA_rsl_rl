@@ -12,7 +12,7 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation
+from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_End2endGtCommand, Distillation
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
@@ -20,7 +20,6 @@ from rsl_rl.modules import (
     ActorCriticEnd2endFollowing,
     ActorCriticWbcEnd2endFollowing,
     ActorCriticEnd2endFollowingGtCommand,
-    ActorCriticFalconWbcEnd2endFollowing,
     ActorCriticTransformer,
     ActorCriticRecurrent,
     EmpiricalNormalization,
@@ -31,7 +30,7 @@ from rsl_rl.utils import store_code_state
 from ipdb import set_trace
 
 
-class OnPolicyRunnerEnd2end:
+class OnPolicyRunnerOnlyCNN:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
@@ -47,7 +46,7 @@ class OnPolicyRunnerEnd2end:
         # resolve training type depending on the algorithms
         if self.alg_cfg["class_name"] == "PPO":
             self.training_type = "rl"  # 6_3: 是rl
-        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
+        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end":
             self.training_type = "rl"  # 6_3: 是rl
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device
@@ -81,7 +80,7 @@ class OnPolicyRunnerEnd2end:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
+        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticEnd2endFollowingGtCommand | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 
@@ -453,7 +452,7 @@ class OnPolicyRunnerEnd2end:
         # -- load optimizer if used
         if load_optimizer and resumed_training:
             # -- algorithm optimizer
-            self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            # self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
             # -- RND optimizer if used
             if self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])

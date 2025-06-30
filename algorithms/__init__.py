@@ -10,5 +10,6 @@ from .ppo import PPO
 from .ppo_end2end import PPO_End2end
 from .ppo_wbc_end2end import PPO_WbcEnd2end
 from .ppo_end2end_gt_command import PPO_End2endGtCommand
+from .ppo_end2end_falcon_wbc_end2end_following import PPO_End2endFalconWbcEnd2endFollowing
 
-__all__ = ["PPO", "PPO_End2end", "PPO_WbcEnd2end", "PPO_End2endGtCommand", "Distillation"]
+__all__ = ["PPO", "PPO_End2end", "PPO_WbcEnd2end", "PPO_End2endGtCommand", "PPO_End2endFalconWbcEnd2endFollowing", "Distillation"]

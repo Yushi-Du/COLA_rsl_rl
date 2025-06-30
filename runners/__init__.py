@@ -7,5 +7,6 @@
 
 from .on_policy_runner import OnPolicyRunner
 from .on_policy_runner_end2end import OnPolicyRunnerEnd2end
+from .on_policy_runner_only_cnn import OnPolicyRunnerOnlyCNN
 
-__all__ = ["OnPolicyRunner", "OnPolicyRunnerEnd2end"]
+__all__ = ["OnPolicyRunner", "OnPolicyRunnerEnd2end", "OnPolicyRunnerOnlyCNN"]

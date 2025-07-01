@@ -140,8 +140,8 @@ class PPO_FalconWbcEnd2endFollowing:
         if self.policy.is_recurrent:
             self.transition.hidden_states = self.policy.get_hidden_states()
         # compute the actions and values
-        self.transition.actions = self.policy.act(obs, inference).detach()
-        self.transition.values = self.policy.evaluate(critic_obs, inference).detach()
+        self.transition.actions = self.policy.act(obs).detach()
+        self.transition.values = self.policy.evaluate(critic_obs).detach()
         self.transition.actions_log_prob = self.policy.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.policy.action_mean.detach()
         self.transition.action_sigma = self.policy.action_std.detach()
@@ -181,7 +181,7 @@ class PPO_FalconWbcEnd2endFollowing:
 
     def compute_returns(self, last_critic_obs, inference=False):
         # compute value for the last step
-        last_values = self.policy.evaluate(last_critic_obs, inference).detach()
+        last_values = self.policy.evaluate(last_critic_obs).detach()
         self.storage.compute_returns(
             last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )

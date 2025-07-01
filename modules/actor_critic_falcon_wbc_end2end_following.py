@@ -1,26 +1,13 @@
-# Copyright (c) 2021-2025, ETH Zurich and NVIDIA CORPORATION
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-from __future__ import annotations
-
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-import torch.nn.functional as F
-
 from rsl_rl.utils import resolve_nn_activation
 
 import sys
-sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
-from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
-from torch.utils.tensorboard import SummaryWriter
-import os 
-from datetime import datetime
-
+sys.path.append("/home/yushidu/Documents/Humanoid/isaacgym/python/examples/FALCON")
+from humanoidverse.agents.modules.modules import BaseModule
+from omegaconf import OmegaConf
 from ipdb import set_trace
-
 
 class ActorCriticFalconWbcEnd2endFollowing(nn.Module):
     is_recurrent = False
@@ -30,100 +17,99 @@ class ActorCriticFalconWbcEnd2endFollowing(nn.Module):
         num_actor_obs,
         num_critic_obs,
         num_actions,
-        actor_hidden_dims=[256, 256, 256],
-        critic_hidden_dims=[256, 256, 256],
+        lower_body_action_dim=15,   # 需要补充
+        upper_body_action_dim=14,   # 需要补充
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
-        history_length: int = 6,
+        history_length: int = 5,
         num_envs: int = 2048,
         device="cuda:0",
         env=None,
         **kwargs,
     ):
-        if kwargs:
-            print(
-                "ActorCritic.__init__ got unexpected arguments, which will be ignored: "
-                + str([key for key in kwargs.keys()])
-            )
         super().__init__()
-        activation = resolve_nn_activation(activation)
-
-        self.history_length = history_length
-        self.total_steps = 0
-        self.num_envs = num_envs
         self.device = device
-        self.env = env
 
-        log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_log_dir = f"/home/yushidu/Documents/Humanoid/LeggedLab/new_backbone_logs/{log_time}"
-        actor_log_dir = os.path.join(base_log_dir, "actor_cnn")
-        critic_log_dir = os.path.join(base_log_dir, "critic_cnn")
-        os.makedirs(actor_log_dir, exist_ok=True)
-        os.makedirs(critic_log_dir, exist_ok=True)
-        self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
-        self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
+        # 你需要在外部传入 lower_body_action_dim 和 upper_body_action_dim
+        assert lower_body_action_dim is not None and upper_body_action_dim is not None, \
+            "请在初始化时补充 lower_body_action_dim 和 upper_body_action_dim"
 
-        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
-        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
-        self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
-        self.actor_cnn.train()
-        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
+        num_actor_obs = int(num_actor_obs / history_length)
 
-        mlp_input_dim_a = self.mono_actor_obs_dim
-        mlp_input_dim_c = self.mono_critic_obs_dim
-        # Policy
-        actor_layers = []
-        actor_layers.append(nn.Linear(mlp_input_dim_a, actor_hidden_dims[0]))
-        actor_layers.append(activation)
-        for layer_index in range(len(actor_hidden_dims)):
-            if layer_index == len(actor_hidden_dims) - 1:
-                actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], num_actions))
-            else:
-                actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], actor_hidden_dims[layer_index + 1]))
-                actor_layers.append(activation)
-        self.actor = nn.Sequential(*actor_layers)
+        obs_dim_dict = OmegaConf.create({'actor_obs': num_actor_obs, 'critic_obs': num_critic_obs})
 
-        # Value function
-        self.critic_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
-        self.critic_cnn.train()
-        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-4)
+        # 构造上下半身 actor/critic 的 module_config_dict
+        module_config_dict_actor_lower = OmegaConf.create({
+            "input_dim": ["actor_obs"],
+            "history_length": {"actor_obs": history_length},
+            "output_dim": [lower_body_action_dim],
+            "layer_config": {
+                "type": "MLP",
+                "hidden_dims": actor_hidden_dims,
+                "activation": 'ELU',
+            }
+        })
+        module_config_dict_actor_upper = OmegaConf.create({
+            "input_dim": ["actor_obs"],
+            "history_length": {"actor_obs": history_length},
+            "output_dim": [upper_body_action_dim],
+            "layer_config": {
+                "type": "MLP",
+                "hidden_dims": actor_hidden_dims,
+                "activation": 'ELU',
+            }
+        })
+        module_config_dict_critic_lower = OmegaConf.create({
+            "input_dim": ["critic_obs"],
+            "history_length": {"critic_obs": 1},
+            "output_dim": [1],
+            "layer_config": {
+                "type": "MLP",
+                "hidden_dims": critic_hidden_dims,
+                "activation": 'ELU',
+            }
+        })
+        module_config_dict_critic_upper = OmegaConf.create({
+            "input_dim": ["critic_obs"],
+            "history_length": {"critic_obs": 1},
+            "output_dim": [1],
+            "layer_config": {
+                "type": "MLP",
+                "hidden_dims": critic_hidden_dims,
+                "activation": 'ELU',
+            }
+        })
 
-        critic_layers = []
-        critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
-        critic_layers.append(activation)
-        for layer_index in range(len(critic_hidden_dims)):
-            if layer_index == len(critic_hidden_dims) - 1:
-                critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], 1))
-            else:
-                critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], critic_hidden_dims[layer_index + 1]))
-                critic_layers.append(activation)
-        self.critic = nn.Sequential(*critic_layers)
-
-        print(f"Actor MLP: {self.actor}")
-        print(f"Critic MLP: {self.critic}")
+        # 创建两个actor和两个critic
+        self.actor_module = nn.ModuleDict({
+            "lower_body": BaseModule(obs_dim_dict, module_config_dict_actor_lower),
+            "upper_body": BaseModule(obs_dim_dict, module_config_dict_actor_upper),
+        })
+        self.critic_module = nn.ModuleDict({
+            "lower_body": BaseModule(obs_dim_dict, module_config_dict_critic_lower),
+            "upper_body": BaseModule(obs_dim_dict, module_config_dict_critic_upper),
+        })
 
         # Action noise
         self.noise_std_type = noise_std_type
         if self.noise_std_type == "scalar":
-            self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
+            self.std = nn.ParameterDict({
+                "lower_body": nn.Parameter(init_noise_std * torch.ones(lower_body_action_dim)),
+                "upper_body": nn.Parameter(init_noise_std * torch.ones(upper_body_action_dim)),
+            })
         elif self.noise_std_type == "log":
-            self.log_std = nn.Parameter(torch.log(init_noise_std * torch.ones(num_actions)))
+            self.log_std = nn.ParameterDict({
+                "lower_body": nn.Parameter(torch.log(init_noise_std * torch.ones(lower_body_action_dim))),
+                "upper_body": nn.Parameter(torch.log(init_noise_std * torch.ones(upper_body_action_dim))),
+            })
         else:
             raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
 
-        # Action distribution (populated in update_distribution)
-        self.distribution = None
-        # disable args validation for speedup
-        Normal.set_default_validate_args(False)
-
-    @staticmethod
-    # not used at the moment
-    def init_weights(sequential, scales):
-        [
-            torch.nn.init.orthogonal_(module.weight, gain=scales[idx])
-            for idx, module in enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))
-        ]
+        self.distribution = {}
+        Normal.set_default_validate_args = False
 
     def reset(self, dones=None):
         pass
@@ -133,130 +119,70 @@ class ActorCriticFalconWbcEnd2endFollowing(nn.Module):
 
     @property
     def action_mean(self):
-        return self.distribution.mean
+        # 返回拼接后的动作均值
+        return torch.cat([self.distribution[k].mean for k in ["lower_body", "upper_body"]], dim=-1)
 
     @property
     def action_std(self):
-        return self.distribution.stddev
+        return torch.cat([self.distribution[k].stddev for k in ["lower_body", "upper_body"]], dim=-1)
 
     @property
     def entropy(self):
-        return self.distribution.entropy().sum(dim=-1)
-    
-    # 要改
-    def actor_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        commands = observations[:, :, 0:3]
-        pose_commands = observations[:, :, 3:15]
-        # set_trace()
-        tactile_features = observations[:, :, 15:15+144]
-        other_features = observations[:, :, 15+144:]
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+        return sum(self.distribution[k].entropy().sum(dim=-1) for k in ["lower_body", "upper_body"])
 
-        # if self.env._actor_cnn_step < self.env.stage_two_steps:
-        #     # print('Here!')
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.actor_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.actor_cnn_optimizer.step()
+    def update_distribution(self, actor_obs):
+        # 分别更新上下半身分布
+        for k in ["lower_body", "upper_body"]:
+            mean = self.actor_module[k](actor_obs)
+            if self.noise_std_type == "scalar":
+                std = self.std[k].expand_as(mean)
+            elif self.noise_std_type == "log":
+                std = torch.exp(self.log_std[k]).expand_as(mean)
+            else:
+                raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
+            self.distribution[k] = Normal(mean, std)
 
-        #         self.actor_cnn_writer.add_scalar("loss", loss.item(), self.env._actor_cnn_step)
-        #         self.env._actor_cnn_step += 1
-        #         # print(self.env._actor_cnn_step)
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
-        # else:
-        #     final_commands = cnn_outputs
-
-        # self.env.predicted_tactile_command = final_commands[:, -1, :]
-
-        # return torch.cat([final_commands, other_features], dim=2)
-        return torch.cat([commands, pose_commands, other_features], dim=2)
-    
-    def critic_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        commands = observations[:, :, 0:3]
-        pose_commands = observations[:, :, 3:15]
-        tactile_features = observations[:, :, 15:15+144]
-        other_features = observations[:, :, 15+144:]
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
-
-        # final_commands = cnn_outputs
-        # if self.env._critic_cnn_step < self.env.stage_two_steps:
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.critic_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.critic_cnn_optimizer.step()
-
-        #         self.critic_cnn_writer.add_scalar("loss", loss.item(), self.env._critic_cnn_step)
-        #         self.env._critic_cnn_step += 1
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
-
-        # return torch.cat([final_commands, other_features], dim=2)
-        return torch.cat([commands, pose_commands, other_features], dim=2)
-    
-    def process_observations(self, observations, inference=False):
-        num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)  # (num_envs, history_length, 240)
-        mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)  # (num_envs, 96)
-        
-        return self.actor(total_mlp_obs)
-    
-    def process_observations_critic(self, observations, inference=False):
-        num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        mlp_obs_0 = self.critic_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
-
-        return self.critic(total_mlp_obs)
-
-    def update_distribution(self, observations, inference=False):
-
-        mean = self.process_observations(observations, inference)
-        # compute standard deviation
-        if self.noise_std_type == "scalar":
-            std = self.std.expand_as(mean)
-        elif self.noise_std_type == "log":
-            std = torch.exp(self.log_std).expand_as(mean)
-        else:
-            raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
-        # create distribution
-        self.distribution = Normal(mean, std)
-
-    def act(self, observations, inference=False, **kwargs):
-        self.update_distribution(observations, inference)
-        return self.distribution.sample()
+    def act(self, actor_obs, **kwargs):
+        self.update_distribution(actor_obs)
+        # 拼接上下半身动作
+        return torch.cat([self.distribution[k].sample() for k in ["lower_body", "upper_body"]], dim=-1)
 
     def get_actions_log_prob(self, actions):
-        return self.distribution.log_prob(actions).sum(dim=-1)
+        # 拆分actions为上下半身
+        lower_dim = self.std["lower_body"].shape[0]
+        lower_actions = actions[..., :lower_dim]
+        upper_actions = actions[..., lower_dim:]
+        log_prob = self.distribution["lower_body"].log_prob(lower_actions).sum(dim=-1) + \
+                   self.distribution["upper_body"].log_prob(upper_actions).sum(dim=-1)
+        return log_prob
 
-    def act_inference(self, observations):
-        actions_mean = self.process_observations(observations, inference=True)
-        return actions_mean
+    def act_inference(self, actor_obs):
+        # 拼接上下半身动作均值
+        return torch.cat([self.actor_module[k](actor_obs) for k in ["lower_body", "upper_body"]], dim=-1)
 
-    def evaluate(self, critic_observations, inference=False, **kwargs):
-        # value = self.critic(critic_observations)
-        value = self.process_observations_critic(critic_observations, inference)
-        return value
+    def evaluate(self, critic_obs, **kwargs):
+        # 返回上下半身critic输出（可拼接或分别返回，视需求而定）
+        return torch.cat([self.critic_module[k](critic_obs) for k in ["lower_body", "upper_body"]], dim=-1).mean(dim=-1, keepdim=True)
+
+    def _strip_prefix_from_state_dict(self, state_dict, prefix):
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith(prefix):
+                new_state_dict[k[len(prefix):]] = v
+            else:
+                new_state_dict[k] = v
+        return new_state_dict
 
     def load_state_dict(self, state_dict, strict=True):
-        """Load the parameters of the actor-critic model.
-
-        Args:
-            state_dict (dict): State dictionary of the model.
-            strict (bool): Whether to strictly enforce that the keys in state_dict match the keys returned by this
-                           module's state_dict() function.
-
-        Returns:
-            bool: Whether this training resumes a previous training. This flag is used by the `load()` function of
-                  `OnPolicyRunner` to determine how to load further parameters (relevant for, e.g., distillation).
-        """
-
-        super().load_state_dict(state_dict, strict=strict)
-        return True
+        if "actor_model_state_dict" in state_dict and "critic_model_state_dict" in state_dict:
+            actor_sd = state_dict["actor_model_state_dict"]
+            critic_sd = state_dict["critic_model_state_dict"]
+            for k in ["lower_body", "upper_body"]:
+                # 只保留 'module.' 开头的参数
+                actor_module_sd = self._strip_prefix_from_state_dict(actor_sd[k], "actor_module.")
+                self.actor_module[k].load_state_dict(actor_module_sd, strict=False)
+                critic_module_sd = self._strip_prefix_from_state_dict(critic_sd[k], "critic_module.")
+                self.critic_module[k].load_state_dict(critic_module_sd, strict=False)
+            return True
+        else:
+            return super().load_state_dict(state_dict, strict=strict)

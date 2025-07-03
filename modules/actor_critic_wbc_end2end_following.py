@@ -12,11 +12,12 @@ import torch.nn.functional as F
 
 from rsl_rl.utils import resolve_nn_activation
 
+import os
+value = os.getenv("IsaacLab_Root")
 import sys
-sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
+sys.path.append(value)
 from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 from torch.utils.tensorboard import SummaryWriter
-import os 
 from datetime import datetime
 
 from ipdb import set_trace
@@ -146,11 +147,18 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
     # 要改
     def actor_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
-        commands = observations[:, :, 0:3]
-        pose_commands = observations[:, :, 3:15]
+        # commands = observations[:, :, 0:3]
+        # pose_commands = observations[:, :, 3:15]
+        # # set_trace()
+        # tactile_features = observations[:, :, 15:15+144]
+        # other_features = observations[:, :, 15+144:]
+
+        commands = observations[:, :, 0:4]
+        pose_commands = observations[:, :, 4:16]
         # set_trace()
-        tactile_features = observations[:, :, 15:15+144]
-        other_features = observations[:, :, 15+144:]
+        tactile_features = observations[:, :, 16:16+144]
+        other_features = observations[:, :, 16+144:]
+
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
@@ -177,10 +185,16 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
     
     def critic_cnn_forward(self, observations, inference=False):
         # observations.shape: (num_envs, history_length, 240)
-        commands = observations[:, :, 0:3]
-        pose_commands = observations[:, :, 3:15]
-        tactile_features = observations[:, :, 15:15+144]
-        other_features = observations[:, :, 15+144:]
+        # commands = observations[:, :, 0:3]
+        # pose_commands = observations[:, :, 3:15]
+        # tactile_features = observations[:, :, 15:15+144]
+        # other_features = observations[:, :, 15+144:]
+
+        commands = observations[:, :, 0:4]
+        pose_commands = observations[:, :, 4:16]
+        tactile_features = observations[:, :, 16:16+144]
+        other_features = observations[:, :, 16+144:]
+
         recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
@@ -219,6 +233,9 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
     def update_distribution(self, observations, inference=False):
 
         mean = self.process_observations(observations, inference)
+        # print(mean.shape)
+        # if mean.shape[0] != self.num_envs:
+        #     set_trace()
         # compute standard deviation
         if self.noise_std_type == "scalar":
             std = self.std.expand_as(mean)

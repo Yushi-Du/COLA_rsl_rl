@@ -120,11 +120,13 @@ class ActorCriticFalconWbcEnd2endFollowing(nn.Module):
     @property
     def action_mean(self):
         # 返回拼接后的动作均值
-        return torch.cat([self.distribution[k].mean for k in ["lower_body", "upper_body"]], dim=-1)
+        # return torch.cat([self.distribution[k].mean for k in ["lower_body", "upper_body"]], dim=-1)
+        return self.distribution["lower_body"].mean, self.distribution["upper_body"].mean
 
     @property
     def action_std(self):
-        return torch.cat([self.distribution[k].stddev for k in ["lower_body", "upper_body"]], dim=-1)
+        # return torch.cat([self.distribution[k].stddev for k in ["lower_body", "upper_body"]], dim=-1)
+        return self.distribution["lower_body"].stddev, self.distribution["upper_body"].stddev
 
     @property
     def entropy(self):
@@ -145,24 +147,24 @@ class ActorCriticFalconWbcEnd2endFollowing(nn.Module):
     def act(self, actor_obs, **kwargs):
         self.update_distribution(actor_obs)
         # 拼接上下半身动作
-        return torch.cat([self.distribution[k].sample() for k in ["lower_body", "upper_body"]], dim=-1)
+        # return torch.cat([self.distribution[k].sample() for k in ["lower_body", "upper_body"]], dim=-1)
+        return self.distribution["lower_body"].sample(), self.distribution["upper_body"].sample()
 
-    def get_actions_log_prob(self, actions):
-        # 拆分actions为上下半身
-        lower_dim = self.std["lower_body"].shape[0]
-        lower_actions = actions[..., :lower_dim]
-        upper_actions = actions[..., lower_dim:]
-        log_prob = self.distribution["lower_body"].log_prob(lower_actions).sum(dim=-1) + \
-                   self.distribution["upper_body"].log_prob(upper_actions).sum(dim=-1)
-        return log_prob
+    def get_actions_log_prob(self, actions_lower, actions_upper):
+        try:
+            return self.distribution["lower_body"].log_prob(actions_lower).sum(dim=-1), self.distribution["upper_body"].log_prob(actions_upper).sum(dim=-1)
+        except Exception as e:
+            set_trace()
 
     def act_inference(self, actor_obs):
         # 拼接上下半身动作均值
-        return torch.cat([self.actor_module[k](actor_obs) for k in ["lower_body", "upper_body"]], dim=-1)
+        # return torch.cat([self.actor_module[k](actor_obs) for k in ["lower_body", "upper_body"]], dim=-1)
+        return self.actor_module["lower_body"](actor_obs), self.actor_module["upper_body"](actor_obs)
 
     def evaluate(self, critic_obs, **kwargs):
         # 返回上下半身critic输出（可拼接或分别返回，视需求而定）
-        return torch.cat([self.critic_module[k](critic_obs) for k in ["lower_body", "upper_body"]], dim=-1).mean(dim=-1, keepdim=True)
+        # return torch.cat([self.critic_module[k](critic_obs) for k in ["lower_body", "upper_body"]], dim=-1)
+        return self.critic_module["lower_body"](critic_obs), self.critic_module["upper_body"](critic_obs)
 
     def _strip_prefix_from_state_dict(self, state_dict, prefix):
         new_state_dict = {}

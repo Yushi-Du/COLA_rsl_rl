@@ -127,7 +127,8 @@ class OnPolicyRunnerFalcon:
             self.num_steps_per_env,
             [num_obs],
             [num_privileged_obs],
-            [self.env.num_actions],
+            [self.env.num_lower_actions],
+            [self.env.num_upper_actions],
         )
 
         # Decide whether to disable logging
@@ -214,11 +215,12 @@ class OnPolicyRunnerFalcon:
             # with torch.no_grad():
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
-                    actions = self.alg.act(obs, privileged_obs, inference=True)
+                    actions_lower, actions_upper = self.alg.act(obs, privileged_obs, inference=True)
+                    actions = torch.cat((actions_lower, actions_upper), dim=-1)
                     # Step the environment
-                    obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
+                    obs, rewards_upper_body, rewards_lower_body, dones, infos = self.env.step(actions.to(self.env.device))
                     # Move to device
-                    obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    obs, rewards_upper_body, rewards_lower_body, dones = (obs.to(self.device), rewards_upper_body.to(self.device), rewards_lower_body.to(self.device), dones.to(self.device))
                     # perform normalization
                     obs = self.obs_normalizer(obs)
                     if self.privileged_obs_type is not None:
@@ -229,7 +231,7 @@ class OnPolicyRunnerFalcon:
                         privileged_obs = obs
 
                     # process the step
-                    self.alg.process_env_step(rewards, dones, infos)
+                    self.alg.process_env_step(rewards_upper_body, rewards_lower_body, dones, infos)
 
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd else None
@@ -242,11 +244,11 @@ class OnPolicyRunnerFalcon:
                             ep_infos.append(infos["log"])
                         # Update rewards
                         if self.alg.rnd:
-                            cur_ereward_sum += rewards
+                            cur_ereward_sum += rewards_upper_body + rewards_lower_body
                             cur_ireward_sum += intrinsic_rewards  # type: ignore
-                            cur_reward_sum += rewards + intrinsic_rewards
+                            cur_reward_sum += rewards_upper_body + rewards_lower_body + intrinsic_rewards
                         else:
-                            cur_reward_sum += rewards
+                            cur_reward_sum += rewards_upper_body + rewards_lower_body
                         # Update episode length
                         cur_episode_length += 1
                         # Clear data for completed episodes
@@ -331,7 +333,8 @@ class OnPolicyRunnerFalcon:
                     self.writer.add_scalar("Episode/" + key, value, locs["it"])
                     ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
 
-        mean_std = self.alg.policy.action_std.mean()
+        action_std_lower, action_std_upper = self.alg.policy.action_std
+        mean_std = torch.cat([action_std_lower, action_std_upper], dim=-1).mean()
         fps = int(collection_size / (locs["collection_time"] + locs["learn_time"]))
 
         # -- Losses

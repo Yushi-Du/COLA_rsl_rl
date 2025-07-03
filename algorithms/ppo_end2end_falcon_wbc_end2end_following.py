@@ -96,10 +96,22 @@ class PPO_FalconWbcEnd2endFollowing:
         self.policy.to(self.device)
         # 6_3: 看到这里的policy就是ActorCritic, 所以只要是ActorCritic中有的参数就会被更新
         # Create optimizer
-        self.optimizer = optim.Adam(self.policy.parameters(), lr=learning_rate)
+        # self.optimizer = optim.Adam(self.policy.parameters(), lr=learning_rate)
+        self.optimizer_lower = optim.Adam(
+            list(self.policy.actor_module["lower_body"].parameters()) +
+            list(self.policy.critic_module["lower_body"].parameters()),
+            lr=learning_rate
+        )
+        self.optimizer_upper = optim.Adam(
+            list(self.policy.actor_module["upper_body"].parameters()) +
+            list(self.policy.critic_module["upper_body"].parameters()),
+            lr=learning_rate
+        )
         # Create rollout storage
-        self.storage: RolloutStorage = None  # type: ignore
-        self.transition = RolloutStorage.Transition()
+        self.rollout_storage_lower: RolloutStorage = None
+        self.rollout_storage_upper: RolloutStorage = None
+        self.transition_lower = RolloutStorage.Transition()
+        self.transition_upper = RolloutStorage.Transition()
 
         # PPO parameters
         self.clip_param = clip_param
@@ -117,7 +129,7 @@ class PPO_FalconWbcEnd2endFollowing:
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
     def init_storage(
-        self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape
+        self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_lower_shape, actions_upper_shape
     ):
         # create memory for RND as well :)
         if self.rnd:
@@ -125,307 +137,347 @@ class PPO_FalconWbcEnd2endFollowing:
         else:
             rnd_state_shape = None
         # create rollout storage
-        self.storage = RolloutStorage(
+        self.rollout_storage_lower = RolloutStorage(
             training_type,
             num_envs,
             num_transitions_per_env,
             actor_obs_shape,
             critic_obs_shape,
-            actions_shape,
+            actions_lower_shape,
+            rnd_state_shape,
+            self.device,
+        )
+        self.rollout_storage_upper = RolloutStorage(
+            training_type,
+            num_envs,
+            num_transitions_per_env,
+            actor_obs_shape,
+            critic_obs_shape,
+            actions_upper_shape,
             rnd_state_shape,
             self.device,
         )
 
     def act(self, obs, critic_obs, inference=False):
         if self.policy.is_recurrent:
-            self.transition.hidden_states = self.policy.get_hidden_states()
+            raise NotImplementedError(
+                "Recurrent policies are not supported in PPO_FalconWbcEnd2endFollowing. "
+                "Please use PPO_FalconWbcEnd2endFollowingRecurrent instead."
+            )
+            pass
         # compute the actions and values
-        self.transition.actions = self.policy.act(obs).detach()
-        self.transition.values = self.policy.evaluate(critic_obs).detach()
-        self.transition.actions_log_prob = self.policy.get_actions_log_prob(self.transition.actions).detach()
-        self.transition.action_mean = self.policy.action_mean.detach()
-        self.transition.action_sigma = self.policy.action_std.detach()
+        self.transition_lower.actions, self.transition_upper.actions = map(lambda x: x.detach(), self.policy.act(obs))
+        self.transition_lower.values, self.transition_upper.values = map(lambda x: x.detach(), self.policy.evaluate(critic_obs))
+        self.transition_lower.actions_log_prob, self.transition_upper.actions_log_prob = map(lambda x: x.detach(), self.policy.get_actions_log_prob(
+            self.transition_lower.actions, self.transition_upper.actions
+        ))
+        self.transition_lower.action_mean, self.transition_upper.action_mean = map(lambda x: x.detach(), self.policy.action_mean)
+        self.transition_lower.action_sigma, self.transition_upper.action_sigma = map(lambda x: x.detach(), self.policy.action_std)
         # need to record obs and critic_obs before env.step()
-        self.transition.observations = obs
-        self.transition.privileged_observations = critic_obs
-        return self.transition.actions
+        self.transition_lower.observations = obs
+        self.transition_upper.observations = obs
+        self.transition_lower.privileged_observations = critic_obs
+        self.transition_upper.privileged_observations = critic_obs
+        return self.transition_lower.actions, self.transition_upper.actions
 
-    def process_env_step(self, rewards, dones, infos):
+    def process_env_step(self, rewards_upper_body, rewards_lower_body, dones, infos):
         # Record the rewards and dones
         # Note: we clone here because later on we bootstrap the rewards based on timeouts
-        self.transition.rewards = rewards.clone()
-        self.transition.dones = dones
+        self.transition_lower.rewards = rewards_lower_body.clone()
+        self.transition_upper.rewards = rewards_upper_body.clone()
+        self.transition_lower.dones = dones
+        self.transition_upper.dones = dones
 
         # Compute the intrinsic rewards and add to extrinsic rewards
         if self.rnd:
-            # Obtain curiosity gates / observations from infos
-            rnd_state = infos["observations"]["rnd_state"]
-            # Compute the intrinsic rewards
-            # note: rnd_state is the gated_state after normalization if normalization is used
-            self.intrinsic_rewards, rnd_state = self.rnd.get_intrinsic_reward(rnd_state)
-            # Add intrinsic rewards to extrinsic rewards
-            self.transition.rewards += self.intrinsic_rewards
-            # Record the curiosity gates
-            self.transition.rnd_state = rnd_state.clone()
+            raise NotImplementedError(
+                "RND is not implemented for PPO_FalconWbcEnd2endFollowing. "
+                "Please implement it if you want to use RND with PPO_FalconWbcEnd2endFollowing."
+            )
+            pass
 
         # Bootstrapping on time outs
         if "time_outs" in infos:
-            self.transition.rewards += self.gamma * torch.squeeze(
-                self.transition.values * infos["time_outs"].unsqueeze(1).to(self.device), 1
+            self.transition_lower.rewards += self.gamma * torch.squeeze(
+                (self.transition_lower.values) * infos["time_outs"].unsqueeze(1).to(self.device), 1
+            )
+            self.transition_upper.rewards += self.gamma * torch.squeeze(
+                (self.transition_upper.values) * infos["time_outs"].unsqueeze(1).to(self.device), 1
             )
 
         # record the transition
-        self.storage.add_transitions(self.transition)
-        self.transition.clear()
+        self.rollout_storage_lower.add_transitions(self.transition_lower)
+        self.rollout_storage_upper.add_transitions(self.transition_upper)
+        self.transition_lower.clear()
+        self.transition_upper.clear()
         self.policy.reset(dones)
 
     def compute_returns(self, last_critic_obs, inference=False):
         # compute value for the last step
-        last_values = self.policy.evaluate(last_critic_obs).detach()
-        self.storage.compute_returns(
-            last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
+        last_values_lower, last_values_upper = map(lambda x: x.detach(), self.policy.evaluate(last_critic_obs))
+        self.rollout_storage_lower.compute_returns(
+            last_values_lower, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
+        )
+        self.rollout_storage_upper.compute_returns(
+            last_values_upper, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )
 
     def update(self):  # noqa: C901
-        mean_value_loss = 0
-        mean_surrogate_loss = 0
-        mean_entropy = 0
-        # -- RND loss
+        mean_value_loss = {"lower_body": 0, "upper_body": 0}
+        mean_surrogate_loss = {"lower_body": 0, "upper_body": 0}
+        mean_entropy = {"lower_body": 0, "upper_body": 0}
         if self.rnd:
             mean_rnd_loss = 0
         else:
             mean_rnd_loss = None
-        # -- Symmetry loss
         if self.symmetry:
-            mean_symmetry_loss = 0
+            mean_symmetry_loss = {"lower_body": 0, "upper_body": 0}
         else:
             mean_symmetry_loss = None
 
-        # generator for mini batches
         if self.policy.is_recurrent:
-            generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            raise NotImplementedError(
+                "Recurrent policies are not supported in PPO_FalconWbcEnd2endFollowing. "
+                "Please use PPO_FalconWbcEnd2endFollowingRecurrent instead."
+            )
         else:
-            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            generator_lower = self.rollout_storage_lower.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            generator_upper = self.rollout_storage_upper.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
 
-        # iterate over batches
-        for (
-            obs_batch,
-            critic_obs_batch,
-            actions_batch,
-            target_values_batch,
-            advantages_batch,
-            returns_batch,
-            old_actions_log_prob_batch,
-            old_mu_batch,
-            old_sigma_batch,
-            hid_states_batch,
-            masks_batch,
-            rnd_state_batch,
-        ) in generator:
+        for (batch_lower, batch_upper) in zip(generator_lower, generator_upper):
+            # unpack lower
+            (
+                obs_batch_lower,
+                critic_obs_batch_lower,
+                actions_batch_lower,
+                target_values_batch_lower,
+                advantages_batch_lower,
+                returns_batch_lower,
+                old_actions_log_prob_batch_lower,
+                old_mu_batch_lower,
+                old_sigma_batch_lower,
+                hid_states_batch_lower,
+                masks_batch_lower,
+                rnd_state_batch_lower,
+            ) = batch_lower
+            # unpack upper
+            (
+                obs_batch_upper,
+                critic_obs_batch_upper,
+                actions_batch_upper,
+                target_values_batch_upper,
+                advantages_batch_upper,
+                returns_batch_upper,
+                old_actions_log_prob_batch_upper,
+                old_mu_batch_upper,
+                old_sigma_batch_upper,
+                hid_states_batch_upper,
+                masks_batch_upper,
+                rnd_state_batch_upper,
+            ) = batch_upper
 
-            # number of augmentations per sample
-            # we start with 1 and increase it if we use symmetry augmentation
-            num_aug = 1
-            # original batch size
-            original_batch_size = obs_batch.shape[0]
-
-            # check if we should normalize advantages per mini batch
+            # 归一化 advantage
             if self.normalize_advantage_per_mini_batch:
                 with torch.no_grad():
-                    advantages_batch = (advantages_batch - advantages_batch.mean()) / (advantages_batch.std() + 1e-8)
+                    advantages_batch_lower = (advantages_batch_lower - advantages_batch_lower.mean()) / (advantages_batch_lower.std() + 1e-8)
+                    advantages_batch_upper = (advantages_batch_upper - advantages_batch_upper.mean()) / (advantages_batch_upper.std() + 1e-8)
 
-            # Perform symmetric augmentation
+            # 数据增强
+            num_aug = 1
+            original_batch_size = obs_batch_lower.shape[0]
             if self.symmetry and self.symmetry["use_data_augmentation"]:
-                # augmentation using symmetry
                 data_augmentation_func = self.symmetry["data_augmentation_func"]
-                # returned shape: [batch_size * num_aug, ...]
-                obs_batch, actions_batch = data_augmentation_func(
-                    obs=obs_batch, actions=actions_batch, env=self.symmetry["_env"], obs_type="policy"
+                obs_batch_lower, actions_batch_lower = data_augmentation_func(
+                    obs=obs_batch_lower, actions=actions_batch_lower, env=self.symmetry["_env"], obs_type="policy"
                 )
-                critic_obs_batch, _ = data_augmentation_func(
-                    obs=critic_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="critic"
+                obs_batch_upper, actions_batch_upper = data_augmentation_func(
+                    obs=obs_batch_upper, actions=actions_batch_upper, env=self.symmetry["_env"], obs_type="policy"
                 )
-                # compute number of augmentations per sample
-                num_aug = int(obs_batch.shape[0] / original_batch_size)
-                # repeat the rest of the batch
-                # -- actor
-                old_actions_log_prob_batch = old_actions_log_prob_batch.repeat(num_aug, 1)
-                # -- critic
-                target_values_batch = target_values_batch.repeat(num_aug, 1)
-                advantages_batch = advantages_batch.repeat(num_aug, 1)
-                returns_batch = returns_batch.repeat(num_aug, 1)
+                critic_obs_batch_lower, _ = data_augmentation_func(
+                    obs=critic_obs_batch_lower, actions=None, env=self.symmetry["_env"], obs_type="critic"
+                )
+                critic_obs_batch_upper, _ = data_augmentation_func(
+                    obs=critic_obs_batch_upper, actions=None, env=self.symmetry["_env"], obs_type="critic"
+                )
+                num_aug = int(obs_batch_lower.shape[0] / original_batch_size)
+                old_actions_log_prob_batch_lower = old_actions_log_prob_batch_lower.repeat(num_aug, 1)
+                old_actions_log_prob_batch_upper = old_actions_log_prob_batch_upper.repeat(num_aug, 1)
+                target_values_batch_lower = target_values_batch_lower.repeat(num_aug, 1)
+                target_values_batch_upper = target_values_batch_upper.repeat(num_aug, 1)
+                advantages_batch_lower = advantages_batch_lower.repeat(num_aug, 1)
+                advantages_batch_upper = advantages_batch_upper.repeat(num_aug, 1)
+                returns_batch_lower = returns_batch_lower.repeat(num_aug, 1)
+                returns_batch_upper = returns_batch_upper.repeat(num_aug, 1)
 
-            # Recompute actions log prob and entropy for current batch of transitions
-            # Note: we need to do this because we updated the policy with the new parameters
-            # -- actor
-            self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-            actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
-            # -- critic
-            value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
-            # -- entropy
-            # we only keep the entropy of the first augmentation (the original one)
-            mu_batch = self.policy.action_mean[:original_batch_size]
-            sigma_batch = self.policy.action_std[:original_batch_size]
-            entropy_batch = self.policy.entropy[:original_batch_size]
+            # 一次forward，获得所有分支结果
+            # 注意：这里假设obs/critic_obs分别输入lower/upper的batch
+            # get_actions_log_prob、evaluate等方法都返回(lower, upper)
+            self.policy.act(obs_batch_lower)
+            log_prob_lower, log_prob_upper = self.policy.get_actions_log_prob(actions_batch_lower, actions_batch_upper)
+            value_lower, value_upper = self.policy.evaluate(critic_obs_batch_lower)
+            mean_lower, mean_upper = self.policy.action_mean
+            std_lower, std_upper = self.policy.action_std
+            entropy_lower = self.policy.distribution["lower_body"].entropy().mean()
+            entropy_upper = self.policy.distribution["upper_body"].entropy().mean()
 
-            # KL
-            if self.desired_kl is not None and self.schedule == "adaptive":
-                with torch.inference_mode():
-                    kl = torch.sum(
-                        torch.log(sigma_batch / old_sigma_batch + 1.0e-5)
-                        + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
-                        / (2.0 * torch.square(sigma_batch))
-                        - 0.5,
-                        axis=-1,
+            # 分别计算lower/upper的loss
+            for branch, (
+                log_prob, value, mean, std, entropy, actions_batch, target_values_batch, advantages_batch, returns_batch,
+                old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, rnd_state_batch
+            ) in {
+                "lower_body": (
+                    log_prob_lower, value_lower, mean_lower, std_lower, entropy_lower,
+                    actions_batch_lower, target_values_batch_lower, advantages_batch_lower, returns_batch_lower,
+                    old_actions_log_prob_batch_lower, old_mu_batch_lower, old_sigma_batch_lower, rnd_state_batch_lower
+                ),
+                "upper_body": (
+                    log_prob_upper, value_upper, mean_upper, std_upper, entropy_upper,
+                    actions_batch_upper, target_values_batch_upper, advantages_batch_upper, returns_batch_upper,
+                    old_actions_log_prob_batch_upper, old_mu_batch_upper, old_sigma_batch_upper, rnd_state_batch_upper
+                ),
+            }.items():
+                # KL
+                if self.desired_kl is not None and self.schedule == "adaptive":
+                    with torch.inference_mode():
+                        kl = torch.sum(
+                            torch.log(std / old_sigma_batch + 1.0e-5)
+                            + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mean))
+                            / (2.0 * torch.square(std))
+                            - 0.5,
+                            axis=-1,
+                        )
+                        kl_mean = torch.mean(kl)
+                        if self.is_multi_gpu:
+                            torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
+                            kl_mean /= self.gpu_world_size
+                        if self.gpu_global_rank == 0:
+                            if kl_mean > self.desired_kl * 2.0:
+                                self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                            elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                                self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                        if self.is_multi_gpu:
+                            lr_tensor = torch.tensor(self.learning_rate, device=self.device)
+                            torch.distributed.broadcast(lr_tensor, src=0)
+                            self.learning_rate = lr_tensor.item()
+                        for param_group in self.optimizer_lower.param_groups:
+                            param_group["lr"] = self.learning_rate
+                        for param_group in self.optimizer_upper.param_groups:
+                            param_group["lr"] = self.learning_rate
+
+                # Surrogate loss
+                ratio = torch.exp(log_prob - torch.squeeze(old_actions_log_prob_batch))
+                surrogate = -torch.squeeze(advantages_batch) * ratio
+                surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
+                    ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+                )
+                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+
+                # Value function loss
+                if self.use_clipped_value_loss:
+                    value_clipped = target_values_batch + (value - target_values_batch).clamp(
+                        -self.clip_param, self.clip_param
                     )
-                    kl_mean = torch.mean(kl)
-
-                    # Reduce the KL divergence across all GPUs
-                    if self.is_multi_gpu:
-                        torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
-                        kl_mean /= self.gpu_world_size
-
-                    # Update the learning rate
-                    # Perform this adaptation only on the main process
-                    # TODO: Is this needed? If KL-divergence is the "same" across all GPUs,
-                    #       then the learning rate should be the same across all GPUs.
-                    if self.gpu_global_rank == 0:
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
-
-                    # Update the learning rate for all GPUs
-                    if self.is_multi_gpu:
-                        lr_tensor = torch.tensor(self.learning_rate, device=self.device)
-                        torch.distributed.broadcast(lr_tensor, src=0)
-                        self.learning_rate = lr_tensor.item()
-
-                    # Update the learning rate for all parameter groups
-                    for param_group in self.optimizer.param_groups:
-                        param_group["lr"] = self.learning_rate
-
-            # Surrogate loss
-            ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
-            surrogate = -torch.squeeze(advantages_batch) * ratio
-            surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
-                ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
-            )
-            surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
-
-            # Value function loss
-            if self.use_clipped_value_loss:
-                value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(
-                    -self.clip_param, self.clip_param
-                )
-                value_losses = (value_batch - returns_batch).pow(2)
-                value_losses_clipped = (value_clipped - returns_batch).pow(2)
-                value_loss = torch.max(value_losses, value_losses_clipped).mean()
-            else:
-                value_loss = (returns_batch - value_batch).pow(2).mean()
-
-            loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-
-            # Symmetry loss
-            if self.symmetry:
-                # obtain the symmetric actions
-                # if we did augmentation before then we don't need to augment again
-                if not self.symmetry["use_data_augmentation"]:
-                    data_augmentation_func = self.symmetry["data_augmentation_func"]
-                    obs_batch, _ = data_augmentation_func(
-                        obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
-                    )
-                    # compute number of augmentations per sample
-                    num_aug = int(obs_batch.shape[0] / original_batch_size)
-
-                # actions predicted by the actor for symmetrically-augmented observations
-                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
-
-                # compute the symmetrically augmented actions
-                # note: we are assuming the first augmentation is the original one.
-                #   We do not use the action_batch from earlier since that action was sampled from the distribution.
-                #   However, the symmetry loss is computed using the mean of the distribution.
-                action_mean_orig = mean_actions_batch[:original_batch_size]
-                _, actions_mean_symm_batch = data_augmentation_func(
-                    obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
-                )
-
-                # compute the loss (we skip the first augmentation as it is the original one)
-                mse_loss = torch.nn.MSELoss()
-                symmetry_loss = mse_loss(
-                    mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
-                )
-                # add the loss to the total loss
-                if self.symmetry["use_mirror_loss"]:
-                    loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
+                    value_losses = (value - returns_batch).pow(2)
+                    value_losses_clipped = (value_clipped - returns_batch).pow(2)
+                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
                 else:
-                    symmetry_loss = symmetry_loss.detach()
+                    value_loss = (returns_batch - value).pow(2).mean()
 
-            # Random Network Distillation loss
-            if self.rnd:
-                # predict the embedding and the target
-                predicted_embedding = self.rnd.predictor(rnd_state_batch)
-                target_embedding = self.rnd.target(rnd_state_batch).detach()
-                # compute the loss as the mean squared error
-                mseloss = torch.nn.MSELoss()
-                rnd_loss = mseloss(predicted_embedding, target_embedding)
+                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy
 
-            # Compute the gradients
-            # -- For PPO
-            self.optimizer.zero_grad()
-            loss.backward()
-            # -- For RND
-            if self.rnd:
-                self.rnd_optimizer.zero_grad()  # type: ignore
-                rnd_loss.backward()
+                # Symmetry loss
+                if self.symmetry:
+                    if not self.symmetry["use_data_augmentation"]:
+                        data_augmentation_func = self.symmetry["data_augmentation_func"]
+                        obs_aug, _ = data_augmentation_func(
+                            obs=obs_batch_lower if branch == "lower_body" else obs_batch_upper,
+                            actions=None, env=self.symmetry["_env"], obs_type="policy"
+                        )
+                        num_aug = int(obs_aug.shape[0] / original_batch_size)
+                    mean_actions_lower, mean_actions_upper = self.policy.act_inference(
+                        obs_batch_lower.detach().clone(), obs_batch_upper.detach().clone()
+                    )
+                    action_mean_orig = mean_actions_lower if branch == "lower_body" else mean_actions_upper
+                    _, actions_mean_symm_batch = data_augmentation_func(
+                        obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
+                    )
+                    mse_loss = torch.nn.MSELoss()
+                    symmetry_loss = mse_loss(
+                        action_mean_orig[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
+                    )
+                    if self.symmetry["use_mirror_loss"]:
+                        loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
+                    else:
+                        symmetry_loss = symmetry_loss.detach()
+                    mean_symmetry_loss[branch] += symmetry_loss.item()
 
-            # Collect gradients from all GPUs
-            if self.is_multi_gpu:
-                self.reduce_parameters()
+                # Random Network Distillation loss
+                if self.rnd:
+                    predicted_embedding = self.rnd.predictor(rnd_state_batch)
+                    target_embedding = self.rnd.target(rnd_state_batch).detach()
+                    mseloss = torch.nn.MSELoss()
+                    rnd_loss = mseloss(predicted_embedding, target_embedding)
 
-            # Apply the gradients
-            # -- For PPO
-            nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-            self.optimizer.step()
-            # -- For RND
-            if self.rnd_optimizer:
-                self.rnd_optimizer.step()
+                # Compute the gradients
+                # 优化器选择
+                if branch == "lower_body":
+                    self.optimizer_lower.zero_grad()
+                else:
+                    self.optimizer_upper.zero_grad()
 
-            # Store the losses
-            mean_value_loss += value_loss.item()
-            mean_surrogate_loss += surrogate_loss.item()
-            mean_entropy += entropy_batch.mean().item()
-            # -- RND loss
-            if mean_rnd_loss is not None:
-                mean_rnd_loss += rnd_loss.item()
-            # -- Symmetry loss
-            if mean_symmetry_loss is not None:
-                mean_symmetry_loss += symmetry_loss.item()
+                loss.backward()
+                # if self.rnd:
+                #     raise NotImplementedError(
+                #         "RND is not implemented for PPO_FalconWbcEnd2endFollowing. "
+                #         "Please implement it if you want to use RND with PPO_FalconWbcEnd2endFollowing."
+                #     )
+                #     self.rnd_optimizer.zero_grad()
+                #     rnd_loss.backward()
+                # if self.is_multi_gpu:
+                #     self.reduce_parameters()
+                # 梯度裁剪
+                if branch == "lower_body":
+                    nn.utils.clip_grad_norm_(self.policy.actor_module["lower_body"].parameters(), self.max_grad_norm)
+                    nn.utils.clip_grad_norm_(self.policy.critic_module["lower_body"].parameters(), self.max_grad_norm)
+                    self.optimizer_lower.step()
+                else:
+                    nn.utils.clip_grad_norm_(self.policy.actor_module["upper_body"].parameters(), self.max_grad_norm)
+                    nn.utils.clip_grad_norm_(self.policy.critic_module["upper_body"].parameters(), self.max_grad_norm)
+                    self.optimizer_upper.step()
+                # if self.rnd_optimizer:
+                #     self.rnd_optimizer.step()
 
-        # -- For PPO
+                mean_value_loss[branch] += value_loss.item()
+                mean_surrogate_loss[branch] += surrogate_loss.item()
+                mean_entropy[branch] += entropy.item()
+                if mean_rnd_loss is not None:
+                    mean_rnd_loss += rnd_loss.item()
+
         num_updates = self.num_learning_epochs * self.num_mini_batches
-        mean_value_loss /= num_updates
-        mean_surrogate_loss /= num_updates
-        mean_entropy /= num_updates
-        # -- For RND
+        for branch in ["lower_body", "upper_body"]:
+            mean_value_loss[branch] /= num_updates
+            mean_surrogate_loss[branch] /= num_updates
+            mean_entropy[branch] /= num_updates
+            if mean_symmetry_loss is not None:
+                mean_symmetry_loss[branch] /= num_updates
         if mean_rnd_loss is not None:
-            mean_rnd_loss /= num_updates
-        # -- For Symmetry
-        if mean_symmetry_loss is not None:
-            mean_symmetry_loss /= num_updates
-        # -- Clear the storage
-        self.storage.clear()
+            mean_rnd_loss /= (2 * num_updates)
+        self.rollout_storage_lower.clear()
+        self.rollout_storage_upper.clear()
 
-        # construct the loss dictionary
         loss_dict = {
-            "value_function": mean_value_loss,
-            "surrogate": mean_surrogate_loss,
-            "entropy": mean_entropy,
+            "value_function_lower": mean_value_loss["lower_body"],
+            "surrogate_lower": mean_surrogate_loss["lower_body"],
+            "entropy_lower": mean_entropy["lower_body"],
+            "value_function_upper": mean_value_loss["upper_body"],
+            "surrogate_upper": mean_surrogate_loss["upper_body"],
+            "entropy_upper": mean_entropy["upper_body"],
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
-            loss_dict["symmetry"] = mean_symmetry_loss
+            loss_dict["symmetry_lower"] = mean_symmetry_loss["lower_body"]
+            loss_dict["symmetry_upper"] = mean_symmetry_loss["upper_body"]
 
         return loss_dict
 

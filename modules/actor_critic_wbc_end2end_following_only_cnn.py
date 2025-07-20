@@ -16,14 +16,14 @@ import os
 value = os.getenv("IsaacLab_Root")
 import sys
 sys.path.append(value)
-from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
+from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, TemporalSensorCNN_OnlyCnn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 from ipdb import set_trace
 
 
-class ActorCriticWbcEnd2endFollowing(nn.Module):
+class ActorCriticWbcEnd2endFollowingOnlyCnn(nn.Module):
     is_recurrent = False
 
     def __init__(
@@ -66,11 +66,11 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
         self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
         self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
 
-        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
-        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
-        self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 48)
+        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
+        self.actor_cnn = TemporalSensorCNN_OnlyCnn()
         self.actor_cnn.train()
-        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
+        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-3)
 
         mlp_input_dim_a = self.mono_actor_obs_dim
         mlp_input_dim_c = self.mono_critic_obs_dim
@@ -87,9 +87,9 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
         self.actor = nn.Sequential(*actor_layers)
 
         # Value function
-        self.critic_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
+        self.critic_cnn = TemporalSensorCNN_OnlyCnn()
         self.critic_cnn.train()
-        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-4)
+        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-3)
 
         critic_layers = []
         critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
@@ -147,79 +147,67 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
     
     # 要改
     def actor_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        # commands = observations[:, :, 0:3]
-        # pose_commands = observations[:, :, 3:15]
-        # # set_trace()
-        # tactile_features = observations[:, :, 15:15+144]
-        # other_features = observations[:, :, 15+144:]
 
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:16]
-        # set_trace()
-        tactile_features = observations[:, :, 16:16+144]
-        other_features = observations[:, :, 16+144:]
+        tactile_features = observations[:, :, 16:16+48]
+        other_features = observations[:, :, 16+48:]
 
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+        cnn_outputs = self.actor_cnn(tactile_features)  # (num_envs, 16)
 
-        # if self.env._actor_cnn_step < self.env.stage_two_steps:
-        #     # print('Here!')
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.actor_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.actor_cnn_optimizer.step()
+        total_commands = torch.cat([commands, pose_commands], dim=2)  # (num_envs, seq_len, 16)
+        if self.env._actor_cnn_step < self.env.stage_two_steps:
+            if not inference:
+                self.total_steps += 1
+                self.actor_cnn_optimizer.zero_grad()
+                loss = F.mse_loss(cnn_outputs, total_commands)
+                loss.backward()
+                self.actor_cnn_optimizer.step()
 
-        #         self.actor_cnn_writer.add_scalar("loss", loss.item(), self.env._actor_cnn_step)
-        #         self.env._actor_cnn_step += 1
-        #         # print(self.env._actor_cnn_step)
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
-        # else:
-        #     final_commands = cnn_outputs
+                self.actor_cnn_writer.add_scalar("loss", loss.item(), self.env._actor_cnn_step)
+                self.env._actor_cnn_step += 1
+                # print(self.env._actor_cnn_step)
+            final_commands = total_commands  # warmup时短路掉整个actor_cnn
+        else:
+            final_commands = cnn_outputs
 
-        # self.env.predicted_tactile_command = final_commands[:, -1, :]
+        self.env.predicted_tactile_command = final_commands[:, -1, :]
 
-        # return torch.cat([final_commands, other_features], dim=2)
-        return torch.cat([commands, pose_commands, other_features], dim=2)
+        return torch.cat([final_commands, other_features], dim=2)
     
     def critic_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        # commands = observations[:, :, 0:3]
-        # pose_commands = observations[:, :, 3:15]
-        # tactile_features = observations[:, :, 15:15+144]
-        # other_features = observations[:, :, 15+144:]
 
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:16]
-        tactile_features = observations[:, :, 16:16+144]
-        other_features = observations[:, :, 16+144:]
+        tactile_features = observations[:, :, 16:16+48]
+        other_features = observations[:, :, 16+48:]
 
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+        cnn_outputs = self.critic_cnn(tactile_features)  # (num_envs, seq_len, 3)
 
-        # final_commands = cnn_outputs
-        # if self.env._critic_cnn_step < self.env.stage_two_steps:
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.critic_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.critic_cnn_optimizer.step()
+        total_commands = torch.cat([commands, pose_commands], dim=2)  # (num_envs, seq_len, 16)
+        if self.env._critic_cnn_step < self.env.stage_two_steps:
+            if not inference:
+                self.total_steps += 1
+                self.critic_cnn_optimizer.zero_grad()
+                loss = F.mse_loss(cnn_outputs, total_commands)
+                loss.backward()
+                self.critic_cnn_optimizer.step()
 
-        #         self.critic_cnn_writer.add_scalar("loss", loss.item(), self.env._critic_cnn_step)
-        #         self.env._critic_cnn_step += 1
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
+                self.critic_cnn_writer.add_scalar("loss", loss.item(), self.env._critic_cnn_step)
+                self.env._critic_cnn_step += 1
+            final_commands = total_commands  # warmup时短路掉整个critic_cnn
+        else:
+            final_commands = cnn_outputs
 
-        # return torch.cat([final_commands, other_features], dim=2)
-        return torch.cat([commands, pose_commands, other_features], dim=2)
+        self.env.predicted_tactile_command = final_commands[:, -1, :]
+
+        return torch.cat([final_commands, other_features], dim=2)
     
     def process_observations(self, observations, inference=False):
         num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)  # (num_envs, history_length, 240)
+        flattened_obs = observations.reshape(num_envs, self.history_length, -1)
         mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)  # (num_envs, 96)
+        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
         
         return self.actor(total_mlp_obs)
     

@@ -12,14 +12,16 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_End2endGtCommand, Distillation
+from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
     ActorCriticEnd2end,
     ActorCriticEnd2endFollowing,
     ActorCriticWbcEnd2endFollowing,
+    ActorCriticWbcEnd2endFollowingOnlyCnn,
     ActorCriticEnd2endFollowingGtCommand,
+    ActorCriticFalconWbcEnd2endFollowing,
     ActorCriticTransformer,
     ActorCriticRecurrent,
     EmpiricalNormalization,
@@ -46,7 +48,7 @@ class OnPolicyRunnerOnlyCNN:
         # resolve training type depending on the algorithms
         if self.alg_cfg["class_name"] == "PPO":
             self.training_type = "rl"  # 6_3: 是rl
-        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end":
+        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endOnlyCnn" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
             self.training_type = "rl"  # 6_3: 是rl
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device
@@ -80,7 +82,7 @@ class OnPolicyRunnerOnlyCNN:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticEnd2endFollowingGtCommand | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
+        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 

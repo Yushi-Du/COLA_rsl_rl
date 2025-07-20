@@ -12,8 +12,10 @@ import torch.nn.functional as F
 
 from rsl_rl.utils import resolve_nn_activation
 
+import os
+value = os.getenv("IsaacLab_Root")
 import sys
-sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
+sys.path.append(value)
 from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 from torch.utils.tensorboard import SummaryWriter
 import os 

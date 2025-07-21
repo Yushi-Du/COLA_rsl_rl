@@ -23,7 +23,7 @@ from datetime import datetime
 from ipdb import set_trace
 
 
-class ActorCriticWbcEnd2endFollowingOnlyCnn(nn.Module):
+class ActorCriticWbcEnd2endFollowingWholePipe(nn.Module):
     is_recurrent = False
 
     def __init__(

@@ -66,8 +66,8 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
         self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
         self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
 
-        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 144)
-        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 144)
+        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 48)
+        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
         self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
         self.actor_cnn.train()
         self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
@@ -156,12 +156,11 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
 
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:16]
-        # set_trace()
-        tactile_features = observations[:, :, 16:16+144]
-        other_features = observations[:, :, 16+144:]
+        tactile_features = observations[:, :, 16:16+48]
+        other_features = observations[:, :, 16+48:]
 
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+        # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
+        # cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
         # if self.env._actor_cnn_step < self.env.stage_two_steps:
         #     # print('Here!')
@@ -193,11 +192,11 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
 
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:16]
-        tactile_features = observations[:, :, 16:16+144]
-        other_features = observations[:, :, 16+144:]
+        tactile_features = observations[:, :, 16:16+48]
+        other_features = observations[:, :, 16+48:]
 
-        recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
+        # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
+        # cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
         # final_commands = cnn_outputs
         # if self.env._critic_cnn_step < self.env.stage_two_steps:
@@ -217,9 +216,9 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
     
     def process_observations(self, observations, inference=False):
         num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)  # (num_envs, history_length, 240)
+        flattened_obs = observations.reshape(num_envs, self.history_length, -1)
         mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)  # (num_envs, 96)
+        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
         
         return self.actor(total_mlp_obs)
     

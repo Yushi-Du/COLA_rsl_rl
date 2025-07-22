@@ -5,7 +5,7 @@ from rsl_rl.utils import resolve_nn_activation
 
 import sys
 sys.path.append("/home/yushidu/Documents/Humanoid/isaacgym/python/examples/FALCON")
-from humanoidverse.agents.modules.modules import BaseModule
+# from humanoidverse.agents.modules.modules import BaseModule
 from omegaconf import OmegaConf
 from ipdb import set_trace
 

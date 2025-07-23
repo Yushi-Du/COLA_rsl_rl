@@ -70,7 +70,7 @@ class ActorCriticWbcEnd2endFollowingOnlyCnn(nn.Module):
         self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
         self.actor_cnn = TemporalSensorCNN_OnlyCnn()
         self.actor_cnn.train()
-        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-3)
+        self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-2)
 
         mlp_input_dim_a = self.mono_actor_obs_dim
         mlp_input_dim_c = self.mono_critic_obs_dim
@@ -89,7 +89,7 @@ class ActorCriticWbcEnd2endFollowingOnlyCnn(nn.Module):
         # Value function
         self.critic_cnn = TemporalSensorCNN_OnlyCnn()
         self.critic_cnn.train()
-        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-3)
+        self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-2)
 
         critic_layers = []
         critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
@@ -170,6 +170,15 @@ class ActorCriticWbcEnd2endFollowingOnlyCnn(nn.Module):
             final_commands = total_commands  # warmup时短路掉整个actor_cnn
         else:
             final_commands = cnn_outputs
+
+        # # 保存actor第一层权重的初始值（如果还没保存的话）
+        # if not hasattr(self, '_initial_actor_weight'):
+        #     self._initial_actor_weight = self.actor[0].weight.data.clone()
+        
+        # # 检查actor权重是否发生变化
+        # current_weight = self.actor[0].weight.data
+        # if not torch.equal(current_weight, self._initial_actor_weight):
+        #     raise RuntimeError("Actor[0].weight has changed! This should not happen during CNN training phase.")
 
         self.env.predicted_tactile_command = final_commands[:, -1, :]
 

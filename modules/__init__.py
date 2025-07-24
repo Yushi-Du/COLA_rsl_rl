@@ -9,6 +9,7 @@ from .actor_critic import ActorCritic
 from .actor_critic_end2end import ActorCriticEnd2end
 from .actor_critic_end2end_following import ActorCriticEnd2endFollowing
 from .actor_critic_wbc_end2end_following import ActorCriticWbcEnd2endFollowing
+from .actor_critic_wbc_end2end_quat import ActorCriticWbcEnd2endQuat
 from .actor_critic_wbc_end2end_following_only_cnn import ActorCriticWbcEnd2endFollowingOnlyCnn
 from .actor_critic_wbc_end2end_following_whole_pipe import ActorCriticWbcEnd2endFollowingWholePipe
 from .actor_critic_end2end_following_gt_command import ActorCriticEnd2endFollowingGtCommand
@@ -25,6 +26,7 @@ __all__ = [
     "ActorCriticEnd2end",
     "ActorCriticEnd2endFollowing",
     "ActorCriticWbcEnd2endFollowing",
+    "ActorCriticWbcEnd2endQuat",
     "ActorCriticEnd2endFollowingGtCommand",
     "ActorCriticFalconWbcEnd2endFollowing",
     "ActorCriticWbcEnd2endFollowingWholePipe",

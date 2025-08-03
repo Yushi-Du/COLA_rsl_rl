@@ -14,5 +14,6 @@ from .ppo_wbc_end2end_only_cnn import PPO_WbcEnd2endOnlyCnn
 from .ppo_wbc_end2end_whole_pipe import PPO_WbcEnd2endWholePipe
 from .ppo_end2end_gt_command import PPO_End2endGtCommand
 from .ppo_end2end_falcon_wbc_end2end_following import PPO_FalconWbcEnd2endFollowing
+from .ppo_falcon import PPO_Falcon
 
-__all__ = ["PPO", "PPO_End2end", "PPO_WbcEnd2end", "PPO_WbcEnd2endQuat", "PPO_WbcEnd2endOnlyCnn", "PPO_WbcEnd2endWholePipe", "PPO_End2endGtCommand", "PPO_FalconWbcEnd2endFollowing", "Distillation"]
+__all__ = ["PPO", "PPO_End2end", "PPO_WbcEnd2end", "PPO_WbcEnd2endQuat", "PPO_WbcEnd2endOnlyCnn", "PPO_WbcEnd2endWholePipe", "PPO_End2endGtCommand", "PPO_FalconWbcEnd2endFollowing", "PPO_Falcon", "Distillation"]

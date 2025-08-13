@@ -206,7 +206,7 @@ class PPO_WbcEnd2endWholePipe:
             generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         else:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
-
+        # self.num_mini_batches是4, env_config中num_steps_per_env是24, 所以每个batch的长度是6
         # iterate over batches
         for (
             obs_batch,
@@ -222,6 +222,7 @@ class PPO_WbcEnd2endWholePipe:
             masks_batch,
             rnd_state_batch,
         ) in generator:
+            # batches shape: (6*num_envs, 原本的单帧的shape) (比如对于observation, 就是包括了history_length的，本应作为网络输入的形式)
 
             # number of augmentations per sample
             # we start with 1 and increase it if we use symmetry augmentation

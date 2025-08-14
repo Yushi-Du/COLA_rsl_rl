@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from rsl_rl.modules import ActorCriticWbcEnd2endFollowingOnlyHeadQuat
+from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResi
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
@@ -18,10 +18,10 @@ from rsl_rl.utils import string_to_callable
 from ipdb import set_trace
 
 
-class PPO_WbcEnd2endOnlyHead:
+class PPO_WbcEnd2endWholePipeResi:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCriticWbcEnd2endFollowingOnlyHeadQuat
+    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResi
     """The actor critic module."""
 
     def __init__(
@@ -96,7 +96,7 @@ class PPO_WbcEnd2endOnlyHead:
         self.policy.to(self.device)
         # 6_3: 看到这里的policy就是ActorCritic, 所以只要是ActorCritic中有的参数就会被更新
         # Create optimizer
-        self.optimizer = optim.Adam(list(self.policy.actor_command_predictor.parameters()) + list(self.policy.critic_for_predicted_commands.parameters()), lr=learning_rate)
+        self.optimizer = optim.Adam(list(self.policy.residual_actor.parameters())+list(self.policy.residual_critic.parameters()), lr=learning_rate)
         # Create rollout storage
         self.storage: RolloutStorage = None  # type: ignore
         self.transition = RolloutStorage.Transition()
@@ -386,7 +386,7 @@ class PPO_WbcEnd2endOnlyHead:
 
             # Apply the gradients
             # -- For PPO
-            nn.utils.clip_grad_norm_(list(self.policy.actor_command_predictor.parameters()) + list(self.policy.critic_for_predicted_commands.parameters()), self.max_grad_norm)
+            nn.utils.clip_grad_norm_(list(self.policy.residual_actor.parameters())+list(self.policy.residual_critic.parameters()), self.max_grad_norm)
             self.optimizer.step()
             # -- For RND
             if self.rnd_optimizer:
@@ -453,7 +453,7 @@ class PPO_WbcEnd2endOnlyHead:
         This function is called after the backward pass to synchronize the gradients across all GPUs.
         """
         # Create a tensor to store the gradients
-        grads = [param.grad.view(-1) for param in list(self.policy.actor_command_predictor.parameters()) + list(self.policy.critic_for_predicted_commands.parameters()) if param.grad is not None]
+        grads = [param.grad.view(-1) for param in list(self.policy.residual_actor.parameters())+list(self.policy.residual_critic.parameters()) if param.grad is not None]
         if self.rnd:
             grads += [param.grad.view(-1) for param in self.rnd.parameters() if param.grad is not None]
         all_grads = torch.cat(grads)
@@ -463,7 +463,7 @@ class PPO_WbcEnd2endOnlyHead:
         all_grads /= self.gpu_world_size
 
         # Get all parameters
-        all_params = list(self.policy.actor_command_predictor.parameters()) + list(self.policy.critic_for_predicted_commands.parameters())
+        all_params = list(self.policy.residual_actor.parameters())+list(self.policy.residual_critic.parameters())
         if self.rnd:
             all_params = chain(all_params, self.rnd.parameters())
 

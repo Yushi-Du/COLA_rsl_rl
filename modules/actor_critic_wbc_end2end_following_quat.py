@@ -394,8 +394,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuat(nn.Module):
         self.actor_command_predictor_obs_dim = num_actor_obs
         self.critic_for_predicted_commands_obs_dim = num_critic_obs
 
-        self.actor_obs_dim = num_actor_obs - self.history_length * self.num_commands
-        self.critic_obs_dim = num_critic_obs - self.history_length * self.num_commands
+        self.actor_obs_dim = num_actor_obs - self.history_length * (self.num_commands + 13)
+        self.critic_obs_dim = num_critic_obs - self.history_length * (self.num_commands + 13)
 
         # Command predictor
         actor_command_predictor_layers = []
@@ -496,10 +496,13 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuat(nn.Module):
 
         commands = flattened_obs[:, :, 0:4]
         pose_commands = flattened_obs[:, :, 4:18]
-        other_features = flattened_obs[:, :, 18:-18]  # (-1, history_length, other_features_dim)
-        predicted_commands_history = flattened_obs[:, :, -18:]  # (-1, history_length, 18)
+        other_features = flattened_obs[:, :, 18:-(18+13)]  # (-1, history_length, other_features_dim)
+        predicted_commands_history = flattened_obs[:, :, -(18+13):-13]  # (-1, history_length, 18)
+        previliged_features = flattened_obs[:, :, -13:]  # (-1, history_length, 13)
 
         predicted_command = self.actor_command_predictor(observations)  # (-1, 18)
+        if inference:
+            self.env.predicted_command = predicted_command
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
         if self.env._actor_cnn_step < self.env.stage_two_steps:
@@ -543,7 +546,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuat(nn.Module):
         pose_commands = flattened_obs[:, :, 4:18]
         other_features = flattened_obs[:, :, 18:18+3*2+29*3]  # (-1, history_length, other_features_dim)
         predicted_commands_history = flattened_obs[:, :, 18+3*2+29*3:18+3*2+29*3+18]  # (-1, history_length, 18)
-        other_critic_features = flattened_obs[:, :, 18+3*2+29*3+18:]
+        previliged_features = flattened_obs[:, :, 18+3*2+29*3+18:18+3*2+29*3+18+13]  # (-1, history_length, 13)
+        other_critic_features = flattened_obs[:, :, 18+3*2+29*3+18+13:]
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
         if self.env._actor_cnn_step < self.env.stage_two_steps:

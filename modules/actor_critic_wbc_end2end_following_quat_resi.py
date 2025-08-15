@@ -138,6 +138,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         Normal.set_default_validate_args(False)
 
         self._freeze_base_networks()
+
+        self._initialize_residual_networks()
     
     def _freeze_base_networks(self):
         """冻结原网络参数，提高训练效率"""
@@ -152,6 +154,66 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         print(f"可训练 Residual 参数:")
         print(f"  Residual Actor: {sum(p.numel() for p in self.residual_actor.parameters()):,} 参数")
         print(f"  Residual Critic: {sum(p.numel() for p in self.residual_critic.parameters()):,} 参数")
+
+    def _initialize_residual_networks(self):
+        """零初始化 residual 网络"""
+        
+        def init_layer(layer, is_final=False):
+            if isinstance(layer, nn.Linear):
+                if is_final:
+                    # 最后一层：完全零初始化
+                    nn.init.zeros_(layer.weight)
+                    nn.init.zeros_(layer.bias)
+                    print(f"  零初始化最后层: {layer}")
+                else:
+                    # 中间层：小随机初始化
+                    nn.init.normal_(layer.weight, mean=0.0, std=0.01)
+                    nn.init.zeros_(layer.bias)
+        
+        print("初始化 Residual 网络:")
+        
+        # 初始化 residual actor
+        print("- Residual Actor:")
+        for i, layer in enumerate(self.residual_actor):
+            is_final = (i == len(self.residual_actor) - 1)
+            init_layer(layer, is_final)
+        
+        # 初始化 residual critic
+        print("- Residual Critic:")
+        for i, layer in enumerate(self.residual_critic):
+            is_final = (i == len(self.residual_critic) - 1)
+            init_layer(layer, is_final)
+        
+        # 验证初始化效果
+        self._verify_initialization()
+    
+    def _verify_initialization(self):
+        """验证初始化效果"""
+        with torch.no_grad():
+            # 测试数据
+            dummy_obs = torch.randn(32, self.residual_actor_obs_dim)
+            dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim)
+            
+            # 计算初始输出
+            residual_actor_out = self.residual_actor(dummy_obs)
+            residual_critic_out = self.residual_critic(dummy_obs_critic)
+            
+            print("初始化验证:")
+            print(f"  Residual Actor 输出范围: [{residual_actor_out.min():.6f}, {residual_actor_out.max():.6f}]")
+            print(f"  Residual Actor 平均绝对值: {residual_actor_out.abs().mean():.6f}")
+            print(f"  Residual Critic 输出范围: [{residual_critic_out.min():.6f}, {residual_critic_out.max():.6f}]")
+            print(f"  Residual Critic 平均绝对值: {residual_critic_out.abs().mean():.6f}")
+            
+            # 检查是否接近零
+            if residual_actor_out.abs().mean() < 1e-5:
+                print("  ✅ Residual Actor 成功初始化为接近零")
+            else:
+                print("  ⚠️  Residual Actor 初始化可能有问题")
+                
+            if residual_critic_out.abs().mean() < 1e-5:
+                print("  ✅ Residual Critic 成功初始化为接近零")
+            else:
+                print("  ⚠️  Residual Critic 初始化可能有问题")
 
     @staticmethod
     # not used at the moment

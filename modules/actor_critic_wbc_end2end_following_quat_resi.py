@@ -67,8 +67,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         self.residual_actor_obs_dim = num_actor_obs
         self.residual_critic_obs_dim = num_critic_obs
 
-        self.actor_obs_dim = num_actor_obs - self.history_length * (13)
-        self.critic_obs_dim = num_critic_obs - self.history_length * (13)
+        self.actor_obs_dim = num_actor_obs - self.history_length * (13+14*2)
+        self.critic_obs_dim = num_critic_obs - self.history_length * (13+14*2)
 
         # Command predictor
         residual_actor_layers = []
@@ -247,7 +247,11 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
 
         commands = flattened_obs[:, :, 0:4]
         pose_commands = flattened_obs[:, :, 4:18]
-        other_features = flattened_obs[:, :, 18:-13]  # (-1, history_length, other_features_dim)
+        joint_pos_no_hand = flattened_obs[:, :, 18:18+29]  # (-1, history_length, 29)
+        joint_pos_hand = flattened_obs[:, :, 18+29:18+43]  # (-1, history_length, 14)
+        joint_vel_no_hand = flattened_obs[:, :, 18+43:18+43+29]  # (-1, history_length, 29)
+        joint_vel_hand = flattened_obs[:, :, 18+43+29:18+43+29+14]  # (-1, history_length, 14)
+        other_features = flattened_obs[:, :, 18+43+29+14:-13]  # (-1, history_length, other_features_dim)
         previliged_features = flattened_obs[:, :, -13:]  # (-1, history_length, 13)
         
         self.total_steps += 1
@@ -255,7 +259,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         residual_action = self.residual_actor(observations)  # (-1, 29)
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
-        actor_observations = torch.cat([original_commands, other_features], dim=2).reshape(observations.shape[0], -1)
+        actor_observations = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2).reshape(observations.shape[0], -1)
 
         return actor_observations, residual_action
     
@@ -266,13 +270,17 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
 
         commands = flattened_obs[:, :, 0:4]
         pose_commands = flattened_obs[:, :, 4:18]
-        other_features = flattened_obs[:, :, 18:18+3*2+29*3]  # (-1, history_length, other_features_dim)
-        previliged_features = flattened_obs[:, :, 18+3*2+29*3:18+3*2+29*3+13]  # (-1, history_length, 13)
-        other_critic_features = flattened_obs[:, :, 18+3*2+29*3+13:]
+        joint_pos_no_hand = flattened_obs[:, :, 18:18+29]  # (-1, history_length, 29)
+        joint_pos_hand = flattened_obs[:, :, 18+29:18+43]  # (-1, history_length, 14)
+        joint_vel_no_hand = flattened_obs[:, :, 18+43:18+43+29]  # (-1, history_length, 29)
+        joint_vel_hand = flattened_obs[:, :, 18+43+29:18+43+29+14]  # (-1, history_length, 14)
+        other_features = flattened_obs[:, :, 18+43+29+14:-(13+5)]  # (-1, history_length, other_features_dim)
+        previliged_features = flattened_obs[:, :, -(13+5):-5]  # (-1, history_length, 13)
+        other_critic_features = flattened_obs[:, :, -5:]
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
         residual_critic_score = self.residual_critic(observations)  # (-1, 1)
-        critic_observations = torch.cat([original_commands, other_features, other_critic_features], dim=2).reshape(observations.shape[0], -1)
+        critic_observations = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features, other_critic_features], dim=2).reshape(observations.shape[0], -1)
         
         return critic_observations, residual_critic_score
     

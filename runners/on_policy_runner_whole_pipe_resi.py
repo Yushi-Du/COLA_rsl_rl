@@ -24,6 +24,7 @@ from rsl_rl.modules import (
     ActorCriticEnd2endFollowingGtCommand,
     ActorCriticFalconWbcEnd2endFollowing,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResi,
+    ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer,
     ActorCriticTransformer,
     ActorCriticRecurrent,
     EmpiricalNormalization,
@@ -84,7 +85,7 @@ class OnPolicyRunnerWholePipeResi:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticWbcEnd2endFollowingWholePipe | ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
+        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticWbcEnd2endFollowingWholePipe | ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 

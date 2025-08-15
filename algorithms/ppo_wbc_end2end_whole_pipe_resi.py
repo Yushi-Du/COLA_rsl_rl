@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResi
+from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResi, ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
@@ -21,7 +21,7 @@ from ipdb import set_trace
 class PPO_WbcEnd2endWholePipeResi:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResi
+    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer
     """The actor critic module."""
 
     def __init__(

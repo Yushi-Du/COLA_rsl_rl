@@ -8,7 +8,7 @@ from rsl_rl.utils import resolve_nn_activation
 
 
 class TransformerResidualNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim, d_model=256, nhead=8, num_layers=3, dropout=0.1):
+    def __init__(self, input_dim, output_dim, d_model=256, nhead=4, num_layers=2, dropout=0.1):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim

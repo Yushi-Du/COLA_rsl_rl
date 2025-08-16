@@ -38,9 +38,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer(nn.Module):
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
         history_length: int = 10,
-        num_envs: int = 2048,
-        device="cuda:0",
-        env=None,
         **kwargs,
     ):
         if kwargs:
@@ -53,9 +50,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer(nn.Module):
 
         self.history_length = history_length
         self.total_steps = 0
-        self.num_envs = num_envs
-        self.device = device
-        self.env = env
         self.predicted_command = None
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")

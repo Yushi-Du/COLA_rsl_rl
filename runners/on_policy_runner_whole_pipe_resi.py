@@ -12,7 +12,7 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_WbcEnd2endWholePipeResi, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation
+from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_WbcEnd2endWholePipeResi, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, DistillationDistill
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
@@ -28,7 +28,7 @@ from rsl_rl.modules import (
     ActorCriticTransformer,
     ActorCriticRecurrent,
     EmpiricalNormalization,
-    StudentTeacher,
+    StudentTeacherDistill,
     StudentTeacherRecurrent,
 )
 from rsl_rl.utils import store_code_state
@@ -56,7 +56,7 @@ class OnPolicyRunnerWholePipeResi:
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device
             self.policy_cfg['env'] = self.env
-        elif self.alg_cfg["class_name"] == "Distillation":
+        elif self.alg_cfg["class_name"] == "DistillationDistill":
             self.training_type = "distillation"
         else:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
@@ -109,7 +109,7 @@ class OnPolicyRunnerWholePipeResi:
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
-        self.alg: PPO | PPO_End2end | PPO_WbcEnd2end | PPO_WbcEnd2endWholePipeResi | PPO_WbcEnd2endOnlyCnn | PPO_End2endGtCommand | Distillation = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        self.alg: PPO | PPO_End2end | PPO_WbcEnd2end | PPO_WbcEnd2endWholePipeResi | PPO_WbcEnd2endOnlyCnn | PPO_End2endGtCommand | DistillationDistill = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]

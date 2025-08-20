@@ -191,8 +191,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         """验证初始化效果"""
         with torch.no_grad():
             # 测试数据
-            dummy_obs = torch.randn(32, self.residual_actor_obs_dim)
-            dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim)
+            dummy_obs = torch.randn(32, self.residual_actor_obs_dim, device=next(self.residual_actor.parameters()).device)
+            dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim, device=next(self.residual_critic.parameters()).device)
             
             # 计算初始输出
             residual_actor_out = self.residual_actor(dummy_obs)
@@ -342,4 +342,5 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
 
         # 现在可以安全加载了
         super().load_state_dict(state_dict, strict=False)
+        # self._verify_initialization()
         return True

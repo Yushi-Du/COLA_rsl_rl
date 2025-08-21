@@ -70,7 +70,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResi(nn.Module):
         self.actor_obs_dim = num_actor_obs - self.history_length * (13+14*2)
         self.critic_obs_dim = num_critic_obs - self.history_length * (13+14*2)
 
-        # Command predictor
+        # Residual Actor
         residual_actor_layers = []
         residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
         residual_actor_layers.append(activation)

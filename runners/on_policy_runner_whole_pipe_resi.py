@@ -12,7 +12,7 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_WbcEnd2endWholePipeResi, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, DistillationDistill
+from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_WbcEnd2endWholePipeResi, PPO_WbcEnd2endWholePipeResiVel, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, DistillationDistill
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
@@ -24,6 +24,7 @@ from rsl_rl.modules import (
     ActorCriticEnd2endFollowingGtCommand,
     ActorCriticFalconWbcEnd2endFollowing,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResi,
+    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer,
     ActorCriticTransformer,
     ActorCriticRecurrent,
@@ -51,7 +52,7 @@ class OnPolicyRunnerWholePipeResi:
         # resolve training type depending on the algorithms
         if self.alg_cfg["class_name"] == "PPO":
             self.training_type = "rl"  # 6_3: 是rl
-        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endOnlyCnn" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endWholePipeResi" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
+        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endOnlyCnn" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endWholePipeResi" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endWholePipeResiVel" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
             self.training_type = "rl"  # 6_3: 是rl
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device

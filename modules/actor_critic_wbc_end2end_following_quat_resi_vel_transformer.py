@@ -19,6 +19,7 @@ sys.path.append(value)
 from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, TemporalSensorCNN_OnlyCnn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+from .residual_actor_transformer import TransformerResidualNetwork
 
 from ipdb import set_trace
 
@@ -37,9 +38,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
         history_length: int = 10,
-        num_envs: int = 2048,
-        device="cuda:0",
-        env=None,
         **kwargs,
     ):
         if kwargs:
@@ -52,9 +50,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
 
         self.history_length = history_length
         self.total_steps = 0
-        self.num_envs = num_envs
-        self.device = device
-        self.env = env
         self.predicted_command = None
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -70,17 +65,11 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
         self.actor_obs_dim = num_actor_obs - self.history_length * (13+14*2)
         self.critic_obs_dim = num_critic_obs - self.history_length * (13+14*2)
 
-        # Residual Actor
-        residual_actor_layers = []
-        residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
-        residual_actor_layers.append(activation)
-        for layer_index in range(len(actor_hidden_dims)):
-            if layer_index == len(actor_hidden_dims) - 1:
-                residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], num_actions))
-            else:
-                residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], actor_hidden_dims[layer_index + 1]))
-                residual_actor_layers.append(activation)
-        self.residual_actor = nn.Sequential(*residual_actor_layers)
+        # Residual actor
+        self.residual_actor = TransformerResidualNetwork(
+            input_dim=int(self.residual_actor_obs_dim / self.history_length),
+            output_dim=num_actions,
+        )
 
         # Policy
         actor_layers = []
@@ -156,33 +145,26 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
         print(f"  Residual Critic: {sum(p.numel() for p in self.residual_critic.parameters()):,} 参数")
 
     def _initialize_residual_networks(self):
-        """零初始化 residual 网络"""
+        """正确的 Transformer residual 初始化"""
         
-        def init_layer(layer, is_final=False):
+        print("初始化 Transformer Residual 网络:")
+        
+        # 初始化 residual actor (Transformer)
+        print("- Residual Actor (Transformer):")
+        self.residual_actor._init_residual_weights()
+        
+        # 初始化 residual critic (MLP) - 保持原来的方式
+        print("- Residual Critic (MLP):")
+        for i, layer in enumerate(self.residual_critic):
             if isinstance(layer, nn.Linear):
+                is_final = (i == len(self.residual_critic) - 1)
                 if is_final:
-                    # 最后一层：完全零初始化
                     nn.init.zeros_(layer.weight)
                     nn.init.zeros_(layer.bias)
                     print(f"  零初始化最后层: {layer}")
                 else:
-                    # 中间层：小随机初始化
                     nn.init.normal_(layer.weight, mean=0.0, std=0.01)
                     nn.init.zeros_(layer.bias)
-        
-        print("初始化 Residual 网络:")
-        
-        # 初始化 residual actor
-        print("- Residual Actor:")
-        for i, layer in enumerate(self.residual_actor):
-            is_final = (i == len(self.residual_actor) - 1)
-            init_layer(layer, is_final)
-        
-        # 初始化 residual critic
-        print("- Residual Critic:")
-        for i, layer in enumerate(self.residual_critic):
-            is_final = (i == len(self.residual_critic) - 1)
-            init_layer(layer, is_final)
         
         # 验证初始化效果
         self._verify_initialization()
@@ -191,8 +173,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
         """验证初始化效果"""
         with torch.no_grad():
             # 测试数据
-            dummy_obs = torch.randn(32, self.residual_actor_obs_dim, device=next(self.residual_actor.parameters()).device)
-            dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim, device=next(self.residual_critic.parameters()).device)
+            dummy_obs = torch.randn(32, 10, int(self.residual_actor_obs_dim / self.history_length))
+            dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim)
             
             # 计算初始输出
             residual_actor_out = self.residual_actor(dummy_obs)
@@ -255,8 +237,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
         previliged_features = flattened_obs[:, :, -13:]  # (-1, history_length, 13)
         
         self.total_steps += 1
-
-        residual_action = self.residual_actor(observations)  # (-1, 29)
+        
+        residual_action = self.residual_actor(flattened_obs)  # (-1, 29)
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
         actor_observations = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2).reshape(observations.shape[0], -1)
@@ -342,5 +324,4 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer(nn.Module):
 
         # 现在可以安全加载了
         super().load_state_dict(state_dict, strict=False)
-        # self._verify_initialization()
         return True

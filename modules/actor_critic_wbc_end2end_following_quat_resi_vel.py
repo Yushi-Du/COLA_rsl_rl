@@ -340,7 +340,10 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel(nn.Module):
 
         """处理参数维度扩展的加载"""
 
+        # to verify
+
         # 现在可以安全加载了
         super().load_state_dict(state_dict, strict=False)
+        assert torch.equal(state_dict['actor.0.bias'], self.actor.state_dict()['0.bias'])
         # self._verify_initialization()
         return True

@@ -11,6 +11,7 @@ from torch.distributions import Normal
 
 from rsl_rl.utils import resolve_nn_activation
 from .residual_actor_transformer import TransformerResidualNetwork
+from ipdb import set_trace
 
 
 class StudentTeacherDistill(nn.Module):
@@ -68,16 +69,16 @@ class StudentTeacherDistill(nn.Module):
     def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
 
         self.teacher_residual_obs_dim = num_teacher_obs
-        self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (13+14*2)
+        self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (13)
         
         teacher_residual_actor_layers = []
-        teacher_residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
+        teacher_residual_actor_layers.append(nn.Linear(self.teacher_residual_obs_dim, teacher_hidden_dims[0]))
         teacher_residual_actor_layers.append(activation)
-        for layer_index in range(len(actor_hidden_dims)):
-            if layer_index == len(actor_hidden_dims) - 1:
-                teacher_residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], num_actions))
+        for layer_index in range(len(teacher_hidden_dims)):
+            if layer_index == len(teacher_hidden_dims) - 1:
+                teacher_residual_actor_layers.append(nn.Linear(teacher_hidden_dims[layer_index], num_actions))
             else:
-                teacher_residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], actor_hidden_dims[layer_index + 1]))
+                teacher_residual_actor_layers.append(nn.Linear(teacher_hidden_dims[layer_index], teacher_hidden_dims[layer_index + 1]))
                 teacher_residual_actor_layers.append(activation)
         self.teacher_residual_actor = nn.Sequential(*teacher_residual_actor_layers)
         
@@ -121,7 +122,7 @@ class StudentTeacherDistill(nn.Module):
         std = self.std.expand_as(mean)
         self.distribution = Normal(mean, std)
 
-    def act(self, observations):
+    def act(self, observations, inference=None):
         self.update_distribution(observations)
         return self.distribution.sample()
 
@@ -129,7 +130,7 @@ class StudentTeacherDistill(nn.Module):
         actions_mean = self.student(observations)
         return actions_mean
 
-    def evaluate(self, teacher_observations):
+    def evaluate(self, teacher_observations, inference=None):
         with torch.no_grad():
             actions = self.teacher(teacher_observations)
         return actions
@@ -151,9 +152,15 @@ class StudentTeacherDistill(nn.Module):
         if any("actor" in key for key in state_dict.keys()):  # loading parameters from rl training
             # rename keys to match teacher and remove critic parameters
             teacher_state_dict = {}
+            # for key, value in state_dict.items():
+            #     if "actor." in key:
+            #         teacher_state_dict[key.replace("actor.", "")] = value
             for key, value in state_dict.items():
                 if "actor." in key:
-                    teacher_state_dict[key.replace("actor.", "")] = value
+                    if key.startswith("residual_"):
+                        teacher_state_dict[key.replace("residual", "teacher_residual")] = value
+                    else:
+                        teacher_state_dict[key.replace("actor.", "teacher_base_actor.")] = value
             self.teacher.load_state_dict(teacher_state_dict, strict=strict)
             # also load recurrent memory if teacher is recurrent
             if self.is_recurrent and self.teacher_recurrent:
@@ -182,13 +189,13 @@ class TeacherResidualWrapper(nn.Module):
     
     def __init__(self, residual_actor, base_actor, history_length):
         super().__init__()
-        self.residual_actor = residual_actor
-        self.base_actor = base_actor
+        self.teacher_residual_actor = residual_actor
+        self.teacher_base_actor = base_actor
         self.history_length = history_length
     
     def forward(self, observations):
         flattened_obs = observations.reshape(observations.shape[0], self.history_length, -1)
-        residual_action = self.residual_actor(observations)
+        residual_action = self.teacher_residual_actor(observations)
         
         commands = flattened_obs[:, :, 0:4]
         pose_commands = flattened_obs[:, :, 4:18]
@@ -200,16 +207,16 @@ class TeacherResidualWrapper(nn.Module):
         base_actor_obs = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2)
         base_actor_obs_flat = base_actor_obs.reshape(observations.shape[0], -1)
         
-        base_action = self.base_actor(base_actor_obs_flat)
+        base_action = self.teacher_base_actor(base_actor_obs_flat)
         
         return base_action + residual_action
     
     def eval(self):
-        self.residual_actor.eval()
-        self.base_actor.eval()
+        self.teacher_residual_actor.eval()
+        self.teacher_base_actor.eval()
         return self
     
     def train(self, mode=True):
-        self.residual_actor.train(mode)
-        self.base_actor.train(mode)
+        self.teacher_residual_actor.train(mode)
+        self.teacher_base_actor.train(mode)
         return self

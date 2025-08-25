@@ -81,7 +81,7 @@ class DistillationDistill:
             self.device,
         )
 
-    def act(self, obs, teacher_obs):
+    def act(self, obs, teacher_obs, inference=None):
         # compute the actions
         self.transition.actions = self.policy.act(obs).detach()
         self.transition.privileged_actions = self.policy.evaluate(teacher_obs).detach()

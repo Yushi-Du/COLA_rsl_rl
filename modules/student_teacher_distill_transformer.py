@@ -13,7 +13,7 @@ from rsl_rl.utils import resolve_nn_activation
 from .residual_actor_transformer import TransformerResidualNetwork
 
 
-class StudentTeacherDistill(nn.Module):
+class StudentTeacherDistillTransformer(nn.Module):
     is_recurrent = False
 
     def __init__(
@@ -66,21 +66,23 @@ class StudentTeacherDistill(nn.Module):
         Normal.set_default_validate_args = False
 
     def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
+        """构建包含 residual + base actor 的复合 teacher"""
 
+        # 计算维度 (与您的 ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer 保持一致)
         self.teacher_residual_obs_dim = num_teacher_obs
         self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (13+14*2)
         
-        teacher_residual_actor_layers = []
-        teacher_residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
-        teacher_residual_actor_layers.append(activation)
-        for layer_index in range(len(actor_hidden_dims)):
-            if layer_index == len(actor_hidden_dims) - 1:
-                teacher_residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], num_actions))
-            else:
-                teacher_residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], actor_hidden_dims[layer_index + 1]))
-                teacher_residual_actor_layers.append(activation)
-        self.teacher_residual_actor = nn.Sequential(*teacher_residual_actor_layers)
+        # 🔥 1. Residual Actor (Transformer)
+        self.teacher_residual_actor = TransformerResidualNetwork(
+            input_dim=int(self.teacher_residual_obs_dim / self.history_length),
+            output_dim=num_actions,
+            d_model=256,  # 适中的模型大小
+            nhead=8,
+            num_layers=3,
+            dropout=0.1
+        )
         
+        # 🔥 2. Base Actor (MLP)
         teacher_base_layers = []
         teacher_base_layers.append(nn.Linear(self.teacher_base_obs_dim, teacher_hidden_dims[0]))
         teacher_base_layers.append(activation)
@@ -92,6 +94,7 @@ class StudentTeacherDistill(nn.Module):
                 teacher_base_layers.append(activation)
         self.teacher_base_actor = nn.Sequential(*teacher_base_layers)
         
+        # 🔥 3. 创建一个包装器作为统一接口
         self.teacher = TeacherResidualWrapper(
             residual_actor=self.teacher_residual_actor,
             base_actor=self.teacher_base_actor,
@@ -179,6 +182,7 @@ class StudentTeacherDistill(nn.Module):
 
 
 class TeacherResidualWrapper(nn.Module):
+    """🔥 包装器：统一 residual_actor + base_actor 的接口"""
     
     def __init__(self, residual_actor, base_actor, history_length):
         super().__init__()
@@ -187,14 +191,18 @@ class TeacherResidualWrapper(nn.Module):
         self.history_length = history_length
     
     def forward(self, observations):
+        """实现与 ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer 相同的逻辑"""
+        # 🔥 1. 处理 residual_actor 输入 (完整的历史观测)
         flattened_obs = observations.reshape(observations.shape[0], self.history_length, -1)
-        residual_action = self.residual_actor(observations)
+        residual_action = self.residual_actor(flattened_obs)
         
+        # 🔥 2. 处理 base_actor 输入 (去除历史的观测)
+        # 重现 actor_forward 的逻辑
         commands = flattened_obs[:, :, 0:4]
         pose_commands = flattened_obs[:, :, 4:18]
         joint_pos_no_hand = flattened_obs[:, :, 18:18+29]
-        joint_vel_no_hand = flattened_obs[:, :, 18+29:18+29+29]
-        other_features = flattened_obs[:, :, 18+29+29:-13]
+        joint_vel_no_hand = flattened_obs[:, :, 18+43:18+43+29]
+        other_features = flattened_obs[:, :, 18+43+29+14:-13]
         
         original_commands = torch.cat([commands, pose_commands], dim=2)
         base_actor_obs = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2)
@@ -202,6 +210,7 @@ class TeacherResidualWrapper(nn.Module):
         
         base_action = self.base_actor(base_actor_obs_flat)
         
+        # 🔥 3. 组合输出
         return base_action + residual_action
     
     def eval(self):

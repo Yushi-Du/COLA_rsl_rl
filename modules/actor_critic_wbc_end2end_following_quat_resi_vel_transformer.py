@@ -20,6 +20,7 @@ from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, Te
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from .residual_actor_transformer import TransformerResidualNetwork
+from .residual_actor_transformer_flash import TransformerResidualNetworkFlash
 
 from ipdb import set_trace
 

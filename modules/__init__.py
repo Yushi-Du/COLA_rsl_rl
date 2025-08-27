@@ -21,6 +21,7 @@ from .actor_critic_wbc_end2end_following_quat import ActorCriticWbcEnd2endFollow
 from .actor_critic_wbc_end2end_following_quat_resi import ActorCriticWbcEnd2endFollowingWholePipeQuatResi
 from .actor_critic_wbc_end2end_following_quat_resi_vel import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel
 from .actor_critic_wbc_end2end_following_quat_resi_vel_29 import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29
+from .actor_critic_wbc_end2end_following_quat_resi_vel_15_previ import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ
 from .actor_critic_wbc_end2end_following_quat_resi_vel_transformer import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
 from .actor_critic_wbc_end2end_following_quat_resi_transformer import ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer
 from .actor_critic_transformer import ActorCriticTransformer
@@ -42,6 +43,7 @@ __all__ = [
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResi",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29",
+    "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer",
     "ActorCriticEnd2endFollowingGtCommand",

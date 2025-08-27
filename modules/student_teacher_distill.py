@@ -149,7 +149,24 @@ class StudentTeacherDistill(nn.Module):
         """
 
         # check if state_dict contains teacher and student or just teacher parameters
-        if any("actor" in key for key in state_dict.keys()):  # loading parameters from rl training
+        if any("teacher" in key for key in state_dict.keys()):  # loading parameters from rl training
+            # rename keys to match teacher and remove critic parameters
+            teacher_state_dict = {}
+            # for key, value in state_dict.items():
+            #     if "actor." in key:
+            #         teacher_state_dict[key.replace("actor.", "")] = value
+            for key, value in state_dict.items():
+                if "teacher" in key:
+                    teacher_state_dict[key.replace("teacher.", "")] = value
+            self.teacher.load_state_dict(teacher_state_dict, strict=strict)
+            # also load recurrent memory if teacher is recurrent
+            if self.is_recurrent and self.teacher_recurrent:
+                raise NotImplementedError("Loading recurrent memory for the teacher is not implemented yet")  # TODO
+            # set flag for successfully loading the parameters
+            self.loaded_teacher = True
+            self.teacher.eval()
+            return False
+        elif any("actor" in key for key in state_dict.keys()):  # loading parameters from rl training
             # rename keys to match teacher and remove critic parameters
             teacher_state_dict = {}
             # for key, value in state_dict.items():

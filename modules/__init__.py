@@ -10,6 +10,7 @@ from .actor_critic_end2end import ActorCriticEnd2end
 from .actor_critic_end2end_following import ActorCriticEnd2endFollowing
 from .actor_critic_wbc_end2end_following import ActorCriticWbcEnd2endFollowing
 from .actor_critic_wbc_end2end_quat import ActorCriticWbcEnd2endQuat
+from .actor_critic_wbc_end2end_quat_hm_teacher import ActorCriticWbcEnd2endQuatHMTeacher
 from .actor_critic_wbc_end2end_quat_transformer import ActorCriticWbcEnd2endQuatTransformer
 from .actor_critic_wbc_end2end_following_only_cnn import ActorCriticWbcEnd2endFollowingOnlyCnn
 from .actor_critic_wbc_end2end_following_whole_pipe import ActorCriticWbcEnd2endFollowingWholePipe
@@ -38,6 +39,7 @@ __all__ = [
     "ActorCriticEnd2endFollowing",
     "ActorCriticWbcEnd2endFollowing",
     "ActorCriticWbcEnd2endQuat",
+    "ActorCriticWbcEnd2endQuatHMTeacher",
     "ActorCriticWbcEnd2endQuatTransformer",
     "ActorCriticWbcEnd2endFollowingWholePipeQuat",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResi",

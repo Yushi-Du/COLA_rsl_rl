@@ -80,7 +80,7 @@ class StudentTeacherDistill(nn.Module):
             else:
                 teacher_residual_actor_layers.append(nn.Linear(teacher_hidden_dims[layer_index], teacher_hidden_dims[layer_index + 1]))
                 teacher_residual_actor_layers.append(activation)
-        self.teacher_residual_actor = nn.Sequential(*teacher_residual_actor_layers)
+        teacher_residual_actor = nn.Sequential(*teacher_residual_actor_layers)
         
         teacher_base_layers = []
         teacher_base_layers.append(nn.Linear(self.teacher_base_obs_dim, teacher_hidden_dims[0]))
@@ -91,11 +91,11 @@ class StudentTeacherDistill(nn.Module):
             else:
                 teacher_base_layers.append(nn.Linear(teacher_hidden_dims[layer_index], teacher_hidden_dims[layer_index + 1]))
                 teacher_base_layers.append(activation)
-        self.teacher_base_actor = nn.Sequential(*teacher_base_layers)
+        teacher_base_actor = nn.Sequential(*teacher_base_layers)
         
         self.teacher = TeacherResidualWrapper(
-            residual_actor=self.teacher_residual_actor,
-            base_actor=self.teacher_base_actor,
+            residual_actor=teacher_residual_actor,
+            base_actor=teacher_base_actor,
             history_length=self.history_length
         )
 
@@ -152,19 +152,25 @@ class StudentTeacherDistill(nn.Module):
         if any("teacher" in key for key in state_dict.keys()):  # loading parameters from rl training
             # rename keys to match teacher and remove critic parameters
             teacher_state_dict = {}
+            student_state_dict = {}
             # for key, value in state_dict.items():
             #     if "actor." in key:
             #         teacher_state_dict[key.replace("actor.", "")] = value
             for key, value in state_dict.items():
                 if "teacher" in key:
                     teacher_state_dict[key.replace("teacher.", "")] = value
+                if "student" in key:
+                    student_state_dict[key] = value
             self.teacher.load_state_dict(teacher_state_dict, strict=strict)
+            self.student.load_state_dict(student_state_dict, strict=strict)
             # also load recurrent memory if teacher is recurrent
             if self.is_recurrent and self.teacher_recurrent:
                 raise NotImplementedError("Loading recurrent memory for the teacher is not implemented yet")  # TODO
             # set flag for successfully loading the parameters
             self.loaded_teacher = True
             self.teacher.eval()
+            if any("student" in key for key in state_dict.keys()):
+                return True
             return False
         elif any("actor" in key for key in state_dict.keys()):  # loading parameters from rl training
             # rename keys to match teacher and remove critic parameters

@@ -66,8 +66,10 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
         self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
 
-        self.mono_actor_obs_dim = num_actor_obs - int(history_length * 48)
-        self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
+        # self.mono_actor_obs_dim = num_actor_obs - int(history_length * 48)
+        # self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
+        self.mono_actor_obs_dim = num_actor_obs
+        self.mono_critic_obs_dim = num_critic_obs
         self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
         self.actor_cnn.train()
         self.actor_cnn_optimizer = torch.optim.Adam(self.actor_cnn.parameters(), lr=1e-4)
@@ -154,10 +156,14 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         # tactile_features = observations[:, :, 15:15+144]
         # other_features = observations[:, :, 15+144:]
 
+        # commands = observations[:, :, 0:4]
+        # pose_commands = observations[:, :, 4:18]
+        # tactile_features = observations[:, :, 18:18+48]
+        # other_features = observations[:, :, 18+48:]
+        
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:18]
-        tactile_features = observations[:, :, 18:18+48]
-        other_features = observations[:, :, 18+48:]
+        other_features = observations[:, :, 18:]
 
         # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         # cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
@@ -190,10 +196,14 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         # tactile_features = observations[:, :, 15:15+144]
         # other_features = observations[:, :, 15+144:]
 
+        # commands = observations[:, :, 0:4]
+        # pose_commands = observations[:, :, 4:18]
+        # tactile_features = observations[:, :, 18:18+48]
+        # other_features = observations[:, :, 18+48:]
+        
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:18]
-        tactile_features = observations[:, :, 18:18+48]
-        other_features = observations[:, :, 18+48:]
+        other_features = observations[:, :, 18:]
 
         # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
         # cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
@@ -215,20 +225,22 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         return torch.cat([commands, pose_commands, other_features], dim=2)
     
     def process_observations(self, observations, inference=False):
-        num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
+        # num_envs = observations.shape[0]
+        # flattened_obs = observations.reshape(num_envs, self.history_length, -1)
+        # mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
+        # total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
         
-        return self.actor(total_mlp_obs)
+        # return self.actor(total_mlp_obs)
+        return self.actor(observations)
     
     def process_observations_critic(self, observations, inference=False):
-        num_envs = observations.shape[0]
-        flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        mlp_obs_0 = self.critic_cnn_forward(flattened_obs, inference)  
-        total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
+        # num_envs = observations.shape[0]
+        # flattened_obs = observations.reshape(num_envs, self.history_length, -1)
+        # mlp_obs_0 = self.critic_cnn_forward(flattened_obs, inference)  
+        # total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
 
-        return self.critic(total_mlp_obs)
+        # return self.critic(total_mlp_obs)
+        return self.critic(observations)
 
     def update_distribution(self, observations, inference=False):
 

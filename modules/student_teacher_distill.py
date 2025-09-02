@@ -147,6 +147,14 @@ class StudentTeacherDistill(nn.Module):
             bool: Whether this training resumes a previous training. This flag is used by the `load()` function of
                   `OnPolicyRunner` to determine how to load further parameters.
         """
+        set_trace()
+
+        if any("student" in key for key in state_dict.keys()):  # loading parameters from distillation training
+            super().load_state_dict(state_dict, strict=strict)
+            # set flag for successfully loading the parameters
+            self.loaded_teacher = True
+            self.teacher.eval()
+            return True
 
         # check if state_dict contains teacher and student or just teacher parameters
         if any("teacher" in key for key in state_dict.keys()):  # loading parameters from rl training
@@ -157,10 +165,10 @@ class StudentTeacherDistill(nn.Module):
             #     if "actor." in key:
             #         teacher_state_dict[key.replace("actor.", "")] = value
             for key, value in state_dict.items():
-                if "teacher" in key:
+                if "teacher." in key:
                     teacher_state_dict[key.replace("teacher.", "")] = value
                 if "student" in key:
-                    student_state_dict[key] = value
+                    student_state_dict[key.replace("student.", "")] = value
             self.teacher.load_state_dict(teacher_state_dict, strict=strict)
             self.student.load_state_dict(student_state_dict, strict=strict)
             # also load recurrent memory if teacher is recurrent

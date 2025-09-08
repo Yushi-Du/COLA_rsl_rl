@@ -12,7 +12,7 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endQuat, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation
+from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endQuat, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation, DistillationDistill_HM
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
     ActorCritic,
@@ -28,6 +28,7 @@ from rsl_rl.modules import (
     ActorCriticRecurrent,
     EmpiricalNormalization,
     StudentTeacher,
+    StudentTeacherDistill_HM,
     StudentTeacherRecurrent,
 )
 from rsl_rl.utils import store_code_state
@@ -55,7 +56,7 @@ class OnPolicyRunnerEnd2end:
             self.policy_cfg['num_envs'] = self.env.num_envs
             self.policy_cfg['device'] = self.device
             self.policy_cfg['env'] = self.env
-        elif self.alg_cfg["class_name"] == "Distillation":
+        elif self.alg_cfg["class_name"] == "Distillation" or self.alg_cfg["class_name"] == "DistillationDistill_HM":
             self.training_type = "distillation"
         else:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
@@ -84,7 +85,7 @@ class OnPolicyRunnerEnd2end:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endQuat | ActorCriticWbcEnd2endQuatHMTeacher | ActorCriticWbcEnd2endQuatTransformer | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent = policy_class(
+        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endQuat | ActorCriticWbcEnd2endQuatHMTeacher | ActorCriticWbcEnd2endQuatTransformer | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent | StudentTeacherDistill_HM = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 

@@ -31,6 +31,7 @@ from .normalizer import EmpiricalNormalization
 from .rnd import RandomNetworkDistillation
 from .student_teacher import StudentTeacher
 from .student_teacher_distill import StudentTeacherDistill
+from .student_teacher_distill_hm import StudentTeacherDistill_HM
 from .student_teacher_distill_residual import StudentTeacherDistill_Resi
 from .student_teacher_recurrent import StudentTeacherRecurrent
 
@@ -59,6 +60,7 @@ __all__ = [
     "RandomNetworkDistillation",
     "StudentTeacher",
     "StudentTeacherDistill",
+    "StudentTeacherDistill_HM",
     "StudentTeacherDistill_Resi",
     "StudentTeacherRecurrent",
 ]

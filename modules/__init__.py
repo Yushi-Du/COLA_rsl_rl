@@ -21,7 +21,10 @@ from .actor_critic_falcon import ActorCriticFalcon
 from .actor_critic_wbc_end2end_following_quat import ActorCriticWbcEnd2endFollowingWholePipeQuat
 from .actor_critic_wbc_end2end_following_quat_resi import ActorCriticWbcEnd2endFollowingWholePipeQuatResi
 from .actor_critic_wbc_end2end_following_quat_resi_vel import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel
+from .actor_critic_wbc_end2end_following_quat_pure_mlp import ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP
+from .actor_critic_wbc_end2end_following_quat_explicit_command import ActorCriticWbcEnd2endFollowingWholePipeQuatExplicitCommand
 from .actor_critic_wbc_end2end_following_quat_resi_vel_29 import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29
+from .actor_critic_wbc_end2end_following_quat_resi_vel_29_mass import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass
 from .actor_critic_wbc_end2end_rl_tune import ActorCriticWbcEnd2endRLTuneQuat
 from .actor_critic_wbc_end2end_following_quat_resi_vel_15_previ import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ
 from .actor_critic_wbc_end2end_following_quat_resi_vel_transformer import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
@@ -32,6 +35,7 @@ from .normalizer import EmpiricalNormalization
 from .rnd import RandomNetworkDistillation
 from .student_teacher import StudentTeacher
 from .student_teacher_distill import StudentTeacherDistill
+from .student_teacher_distill_mass import StudentTeacherDistillMass
 from .student_teacher_distill_hm import StudentTeacherDistill_HM
 from .student_teacher_distill_residual import StudentTeacherDistill_Resi
 from .student_teacher_recurrent import StudentTeacherRecurrent
@@ -47,7 +51,10 @@ __all__ = [
     "ActorCriticWbcEnd2endFollowingWholePipeQuat",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResi",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel",
+    "ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP",
+    "ActorCriticWbcEnd2endFollowingWholePipeQuatExplicitCommand",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29",
+    "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass",
     "ActorCriticWbcEnd2endRLTuneQuat",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ",
     "ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer",
@@ -62,6 +69,7 @@ __all__ = [
     "RandomNetworkDistillation",
     "StudentTeacher",
     "StudentTeacherDistill",
+    "StudentTeacherDistillMass",
     "StudentTeacherDistill_HM",
     "StudentTeacherDistill_Resi",
     "StudentTeacherRecurrent",

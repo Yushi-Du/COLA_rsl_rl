@@ -69,7 +69,7 @@ class StudentTeacherDistillMass(nn.Module):
     def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
 
         self.teacher_residual_obs_dim = num_teacher_obs
-        self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (14)
+        self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (13)
         
         teacher_residual_actor_layers = []
         teacher_residual_actor_layers.append(nn.Linear(self.teacher_residual_obs_dim, teacher_hidden_dims[0]))
@@ -232,7 +232,7 @@ class TeacherResidualWrapper(nn.Module):
         pose_commands = flattened_obs[:, :, 4:18]
         joint_pos_no_hand = flattened_obs[:, :, 18:18+29]
         joint_vel_no_hand = flattened_obs[:, :, 18+29:18+29+29]
-        other_features = flattened_obs[:, :, 18+29+29:-14]
+        other_features = flattened_obs[:, :, 18+29+29:-13]
         
         original_commands = torch.cat([commands, pose_commands], dim=2)
         base_actor_obs = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2)

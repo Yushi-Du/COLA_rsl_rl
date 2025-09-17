@@ -28,6 +28,7 @@ from rsl_rl.modules import (
     ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass,
+    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29,
     ActorCriticWbcEnd2endRLTuneQuat,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer,
@@ -94,7 +95,7 @@ class OnPolicyRunnerWholePipeResi:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticWbcEnd2endFollowingWholePipe | ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endRLTuneQuat | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherDistillMass | StudentTeacherRecurrent | StudentTeacherDistill_Resi = policy_class(
+        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticWbcEnd2endFollowingWholePipe | ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29 | ActorCriticWbcEnd2endRLTuneQuat | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherDistillMass | StudentTeacherRecurrent | StudentTeacherDistill_Resi = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 

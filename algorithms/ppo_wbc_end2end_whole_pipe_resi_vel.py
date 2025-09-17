@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel, ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
+from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel, ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
@@ -21,7 +21,7 @@ from ipdb import set_trace
 class PPO_WbcEnd2endWholePipeResiVel:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
+    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
     """The actor critic module."""
 
     def __init__(

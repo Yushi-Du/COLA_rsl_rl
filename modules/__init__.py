@@ -38,6 +38,7 @@ from .student_teacher import StudentTeacher
 from .student_teacher_distill import StudentTeacherDistill
 from .student_teacher_distill_mass import StudentTeacherDistillMass
 from .student_teacher_distill_hm import StudentTeacherDistill_HM
+from .student_teacher_distill_resi_hm import StudentTeacherDistill_Resi_HM
 from .student_teacher_distill_residual import StudentTeacherDistill_Resi
 from .student_teacher_recurrent import StudentTeacherRecurrent
 
@@ -74,5 +75,6 @@ __all__ = [
     "StudentTeacherDistillMass",
     "StudentTeacherDistill_HM",
     "StudentTeacherDistill_Resi",
+    "StudentTeacherDistill_Resi_HM",
     "StudentTeacherRecurrent",
 ]

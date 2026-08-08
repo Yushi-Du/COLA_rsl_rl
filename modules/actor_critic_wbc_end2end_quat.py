@@ -8,16 +8,13 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-import torch.nn.functional as F
-
 from rsl_rl.utils import resolve_nn_activation
 
 import os
-from .sensor_cnn import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
+from .sensor_cnn import TemporalSensorCNN_Seqlen
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
-from ipdb import set_trace
 
 
 class ActorCriticWbcEnd2endQuat(nn.Module):

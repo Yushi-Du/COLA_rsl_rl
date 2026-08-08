@@ -12,38 +12,14 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endOnlyCnn, PPO_WbcEnd2endQuat, PPO_WbcEnd2endWholePipeResi, PPO_WbcEnd2endWholePipeResiVel, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, DistillationDistill
+from rsl_rl.algorithms import DistillationDistill, PPO_WbcEnd2endWholePipeResiVel
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
-    ActorCritic,
-    ActorCriticEnd2end,
-    ActorCriticEnd2endFollowing,
-    ActorCriticWbcEnd2endFollowing,
-    ActorCriticWbcEnd2endFollowingOnlyCnn,
-    ActorCriticWbcEnd2endFollowingWholePipe,
-    ActorCriticEnd2endFollowingGtCommand,
-    ActorCriticFalconWbcEnd2endFollowing,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResi,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP,
     ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29,
-    ActorCriticWbcEnd2endRLTuneQuat,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer,
-    ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer,
-    ActorCriticTransformer,
-    ActorCriticRecurrent,
     EmpiricalNormalization,
     StudentTeacherDistill,
-    StudentTeacherDistillMass,
-    StudentTeacherDistill_Resi,
-    StudentTeacherDistill_Resi_HM,
-    StudentTeacherRecurrent,
 )
 from rsl_rl.utils import store_code_state
-from ipdb import set_trace
 
 
 class OnPolicyRunnerWholePipeResi:
@@ -59,18 +35,20 @@ class OnPolicyRunnerWholePipeResi:
         # check if multi-gpu is enabled
         self._configure_multi_gpu()
 
-        # resolve training type depending on the algorithms
-        if self.alg_cfg["class_name"] == "PPO":
-            self.training_type = "rl"  # 6_3: 是rl
-        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endOnlyCnn" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endQuat" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endWholePipeResi" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endWholePipeResiVel" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
-            self.training_type = "rl"  # 6_3: 是rl
-            self.policy_cfg['num_envs'] = self.env.num_envs
-            self.policy_cfg['device'] = self.device
-            self.policy_cfg['env'] = self.env
-        elif self.alg_cfg["class_name"] == "DistillationDistill":
+        algorithm_name = self.alg_cfg["class_name"]
+        if algorithm_name == "PPO_WbcEnd2endWholePipeResiVel":
+            self.training_type = "rl"
+            self.policy_cfg["num_envs"] = self.env.num_envs
+            self.policy_cfg["device"] = self.device
+            self.policy_cfg["env"] = self.env
+        elif algorithm_name == "DistillationDistill":
             self.training_type = "distillation"
         else:
-            raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
+            raise ValueError(
+                "OnPolicyRunnerWholePipeResi supports only "
+                "PPO_WbcEnd2endWholePipeResiVel and DistillationDistill, "
+                f"got {algorithm_name}."
+            )
 
         # resolve dimensions of observations
         obs, extras = self.env.get_observations()
@@ -94,9 +72,28 @@ class OnPolicyRunnerWholePipeResi:
         else:
             num_privileged_obs = num_obs
 
-        # evaluate the policy class
-        policy_class = eval(self.policy_cfg.pop("class_name"))
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endFollowingOnlyCnn | ActorCriticWbcEnd2endFollowingWholePipe | ActorCriticWbcEnd2endFollowingWholePipeQuatResi | ActorCriticWbcEnd2endFollowingWholePipeQuatResiTransformer | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29 | ActorCriticWbcEnd2endRLTuneQuat | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherDistillMass | StudentTeacherRecurrent | StudentTeacherDistill_Resi | StudentTeacherDistill_Resi_HM = policy_class(
+        policy_name = self.policy_cfg.pop("class_name")
+        expected_policy = {
+            "PPO_WbcEnd2endWholePipeResiVel": (
+                "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29"
+            ),
+            "DistillationDistill": "StudentTeacherDistill",
+        }[algorithm_name]
+        if policy_name != expected_policy:
+            raise ValueError(
+                f"Algorithm {algorithm_name} requires policy {expected_policy}, got {policy_name}."
+            )
+        policy_classes = {
+            "ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29": (
+                ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29
+            ),
+            "StudentTeacherDistill": StudentTeacherDistill,
+        }
+        try:
+            policy_class = policy_classes[policy_name]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported COLA policy class: {policy_name}.") from exc
+        policy = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
 
@@ -118,9 +115,17 @@ class OnPolicyRunnerWholePipeResi:
             # this is used by the symmetry function for handling different observation terms
             self.alg_cfg["symmetry_cfg"]["_env"] = env
 
-        # initialize algorithm
-        alg_class = eval(self.alg_cfg.pop("class_name"))
-        self.alg: PPO | PPO_End2end | PPO_WbcEnd2end | PPO_WbcEnd2endWholePipeResi | PPO_WbcEnd2endOnlyCnn | PPO_WbcEnd2endQuat | PPO_End2endGtCommand | DistillationDistill = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        algorithm_classes = {
+            "PPO_WbcEnd2endWholePipeResiVel": PPO_WbcEnd2endWholePipeResiVel,
+            "DistillationDistill": DistillationDistill,
+        }
+        self.alg_cfg.pop("class_name")
+        self.alg = algorithm_classes[algorithm_name](
+            policy,
+            device=self.device,
+            **self.alg_cfg,
+            multi_gpu_cfg=self.multi_gpu_cfg,
+        )
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]

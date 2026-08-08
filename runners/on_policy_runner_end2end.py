@@ -12,27 +12,10 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import PPO, PPO_End2end, PPO_WbcEnd2end, PPO_WbcEnd2endQuat, PPO_FalconWbcEnd2endFollowing, PPO_End2endGtCommand, Distillation, DistillationDistill_HM
+from rsl_rl.algorithms import PPO_WbcEnd2endQuat
 from rsl_rl.env import VecEnv
-from rsl_rl.modules import (
-    ActorCritic,
-    ActorCriticEnd2end,
-    ActorCriticEnd2endFollowing,
-    ActorCriticWbcEnd2endFollowing,
-    ActorCriticWbcEnd2endQuat,
-    ActorCriticWbcEnd2endQuatHMTeacher,
-    ActorCriticWbcEnd2endQuatTransformer,
-    ActorCriticEnd2endFollowingGtCommand,
-    ActorCriticFalconWbcEnd2endFollowing,
-    ActorCriticTransformer,
-    ActorCriticRecurrent,
-    EmpiricalNormalization,
-    StudentTeacher,
-    StudentTeacherDistill_HM,
-    StudentTeacherRecurrent,
-)
+from rsl_rl.modules import ActorCriticWbcEnd2endQuat, EmpiricalNormalization
 from rsl_rl.utils import store_code_state
-from ipdb import set_trace
 
 
 class OnPolicyRunnerEnd2end:
@@ -52,18 +35,15 @@ class OnPolicyRunnerEnd2end:
         self._configure_multi_gpu()
         print(f"[DDP-DBG rank={_dbg_rank}] after _configure_multi_gpu", flush=True)
 
-        # resolve training type depending on the algorithms
-        if self.alg_cfg["class_name"] == "PPO":
-            self.training_type = "rl"  # 6_3: 是rl
-        elif self.alg_cfg["class_name"] == "PPO_End2end" or self.alg_cfg["class_name"] == "PPO_End2endGtCommand" or self.alg_cfg["class_name"] == "PPO_WbcEnd2end" or self.alg_cfg["class_name"] == "PPO_WbcEnd2endQuat" or self.alg_cfg["class_name"] == "PPO_FalconWbcEnd2endFollowing":
-            self.training_type = "rl"  # 6_3: 是rl
-            self.policy_cfg['num_envs'] = self.env.num_envs
-            self.policy_cfg['device'] = self.device
-            self.policy_cfg['env'] = self.env
-        elif self.alg_cfg["class_name"] == "Distillation" or self.alg_cfg["class_name"] == "DistillationDistill_HM":
-            self.training_type = "distillation"
-        else:
-            raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
+        algorithm_name = self.alg_cfg["class_name"]
+        if algorithm_name != "PPO_WbcEnd2endQuat":
+            raise ValueError(
+                f"OnPolicyRunnerEnd2end only supports PPO_WbcEnd2endQuat, got {algorithm_name}."
+            )
+        self.training_type = "rl"
+        self.policy_cfg["num_envs"] = self.env.num_envs
+        self.policy_cfg["device"] = self.device
+        self.policy_cfg["env"] = self.env
 
         # resolve dimensions of observations
         print(f"[DDP-DBG rank={_dbg_rank}] before env.get_observations", flush=True)
@@ -72,16 +52,9 @@ class OnPolicyRunnerEnd2end:
         num_obs = obs.shape[1]
 
         # resolve type of privileged observations
-        if self.training_type == "rl":
-            if "critic" in extras["observations"]:
-                self.privileged_obs_type = "critic"  # actor-critic reinforcement learnig, e.g., PPO
-            else:
-                self.privileged_obs_type = None
-        if self.training_type == "distillation":
-            if "teacher" in extras["observations"]:
-                self.privileged_obs_type = "teacher"  # policy distillation
-            else:
-                self.privileged_obs_type = None
+        self.privileged_obs_type = (
+            "critic" if "critic" in extras["observations"] else None
+        )
 
         # resolve dimensions of privileged observations
         if self.privileged_obs_type is not None:
@@ -89,10 +62,14 @@ class OnPolicyRunnerEnd2end:
         else:
             num_privileged_obs = num_obs
 
-        # evaluate the policy class
-        policy_class = eval(self.policy_cfg.pop("class_name"))
-        print(f"[DDP-DBG rank={_dbg_rank}] before policy_class build ({policy_class.__name__})", flush=True)
-        policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endQuat | ActorCriticWbcEnd2endQuatHMTeacher | ActorCriticWbcEnd2endQuatTransformer | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent | StudentTeacherDistill_HM = policy_class(
+        policy_name = self.policy_cfg.pop("class_name")
+        if policy_name != "ActorCriticWbcEnd2endQuat":
+            raise ValueError(
+                "OnPolicyRunnerEnd2end only supports "
+                f"ActorCriticWbcEnd2endQuat, got {policy_name}."
+            )
+        print(f"[DDP-DBG rank={_dbg_rank}] before policy build ({policy_name})", flush=True)
+        policy = ActorCriticWbcEnd2endQuat(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
         print(f"[DDP-DBG rank={_dbg_rank}] after policy build + .to({self.device})", flush=True)
@@ -115,10 +92,14 @@ class OnPolicyRunnerEnd2end:
             # this is used by the symmetry function for handling different observation terms
             self.alg_cfg["symmetry_cfg"]["_env"] = env
 
-        # initialize algorithm
-        alg_class = eval(self.alg_cfg.pop("class_name"))
-        print(f"[DDP-DBG rank={_dbg_rank}] before alg build ({alg_class.__name__})", flush=True)
-        self.alg: PPO | PPO_End2end | PPO_WbcEnd2end | PPO_WbcEnd2endQuat | PPO_End2endGtCommand | Distillation = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        self.alg_cfg.pop("class_name")
+        print(f"[DDP-DBG rank={_dbg_rank}] before alg build ({algorithm_name})", flush=True)
+        self.alg = PPO_WbcEnd2endQuat(
+            policy,
+            device=self.device,
+            **self.alg_cfg,
+            multi_gpu_cfg=self.multi_gpu_cfg,
+        )
         print(f"[DDP-DBG rank={_dbg_rank}] after alg build", flush=True)
 
         # store training configuration

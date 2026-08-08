@@ -8,16 +8,11 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-import torch.nn.functional as F
-
 from rsl_rl.utils import resolve_nn_activation
 
 import os
-from .sensor_cnn import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, TemporalSensorCNN_OnlyCnn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-
-from ipdb import set_trace
 
 
 class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
@@ -35,6 +30,9 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         noise_std_type: str = "scalar",
         history_length: int = 10,
         num_envs: int = 2048,
+        residual_hidden_init_std: float | None = None,
+        residual_final_init_std: float | None = None,
+        residual_bias_init: float | None = None,
         device="cuda:0",
         env=None,
         **kwargs,
@@ -45,6 +43,12 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                 + str([key for key in kwargs.keys()])
             )
         super().__init__()
+        if None in (
+            residual_hidden_init_std,
+            residual_final_init_std,
+            residual_bias_init,
+        ):
+            raise ValueError("Residual initialization values must be provided by the task config")
         activation = resolve_nn_activation(activation)
 
         self.history_length = history_length
@@ -53,6 +57,9 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.device = device
         self.env = env
         self.predicted_command = None
+        self.residual_hidden_init_std = residual_hidden_init_std
+        self.residual_final_init_std = residual_final_init_std
+        self.residual_bias_init = residual_bias_init
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_backbone_logs_dir = os.path.join(os.environ.get("COLA_ROOT", os.getcwd()), "new_backbone_logs")
@@ -166,14 +173,20 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         def init_layer(layer, is_final=False):
             if isinstance(layer, nn.Linear):
                 if is_final:
-                    # 最后一层：完全零初始化
-                    nn.init.zeros_(layer.weight)
-                    nn.init.zeros_(layer.bias)
+                    nn.init.normal_(
+                        layer.weight,
+                        mean=0.0,
+                        std=self.residual_final_init_std,
+                    )
+                    nn.init.constant_(layer.bias, self.residual_bias_init)
                     print(f"  零初始化最后层: {layer}")
                 else:
-                    # 中间层：小随机初始化
-                    nn.init.normal_(layer.weight, mean=0.0, std=0.01)
-                    nn.init.zeros_(layer.bias)
+                    nn.init.normal_(
+                        layer.weight,
+                        mean=0.0,
+                        std=self.residual_hidden_init_std,
+                    )
+                    nn.init.constant_(layer.bias, self.residual_bias_init)
         
         print("初始化 Residual 网络:")
         

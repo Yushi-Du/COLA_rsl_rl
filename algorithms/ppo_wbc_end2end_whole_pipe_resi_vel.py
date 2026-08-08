@@ -10,18 +10,15 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
-from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel, ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ, ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
+from rsl_rl.modules import ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
 
-from ipdb import set_trace
-
-
 class PPO_WbcEnd2endWholePipeResiVel:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel | ActorCriticWbcEnd2endFollowingWholePipeQuatPureMLP | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29Mass | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelHM29 | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ | ActorCriticWbcEnd2endFollowingWholePipeQuatResiVelTransformer
+    policy: ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29
     """The actor critic module."""
 
     def __init__(
@@ -39,6 +36,11 @@ class PPO_WbcEnd2endWholePipeResiVel:
         use_clipped_value_loss=True,
         schedule="fixed",
         desired_kl=0.01,
+        adaptive_kl_high_factor=None,
+        adaptive_kl_low_factor=None,
+        adaptive_lr_factor=None,
+        min_learning_rate=None,
+        max_learning_rate=None,
         device="cpu",
         normalize_advantage_per_mini_batch=False,
         # RND parameters
@@ -48,6 +50,14 @@ class PPO_WbcEnd2endWholePipeResiVel:
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
     ):
+        if None in (
+            adaptive_kl_high_factor,
+            adaptive_kl_low_factor,
+            adaptive_lr_factor,
+            min_learning_rate,
+            max_learning_rate,
+        ):
+            raise ValueError("Adaptive-KL settings must be provided by the task config")
         # device-related parameters
         self.device = device
         self.is_multi_gpu = multi_gpu_cfg is not None
@@ -114,6 +124,11 @@ class PPO_WbcEnd2endWholePipeResiVel:
         self.desired_kl = desired_kl
         self.schedule = schedule
         self.learning_rate = learning_rate
+        self.adaptive_kl_high_factor = adaptive_kl_high_factor
+        self.adaptive_kl_low_factor = adaptive_kl_low_factor
+        self.adaptive_lr_factor = adaptive_lr_factor
+        self.min_learning_rate = min_learning_rate
+        self.max_learning_rate = max_learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
     def init_storage(
@@ -291,10 +306,16 @@ class PPO_WbcEnd2endWholePipeResiVel:
                     # TODO: Is this needed? If KL-divergence is the "same" across all GPUs,
                     #       then the learning rate should be the same across all GPUs.
                     if self.gpu_global_rank == 0:
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                        if kl_mean > self.desired_kl * self.adaptive_kl_high_factor:
+                            self.learning_rate = max(
+                                self.min_learning_rate,
+                                self.learning_rate / self.adaptive_lr_factor,
+                            )
+                        elif kl_mean < self.desired_kl / self.adaptive_kl_low_factor and kl_mean > 0.0:
+                            self.learning_rate = min(
+                                self.max_learning_rate,
+                                self.learning_rate * self.adaptive_lr_factor,
+                            )
 
                     # Update the learning rate for all GPUs
                     if self.is_multi_gpu:

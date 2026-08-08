@@ -3,14 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Implementation of runners for environment-agent interaction."""
+"""Runners used by the three-stage COLA training pipeline."""
 
-from .on_policy_runner import OnPolicyRunner
 from .on_policy_runner_end2end import OnPolicyRunnerEnd2end
-from .on_policy_runner_only_cnn import OnPolicyRunnerOnlyCNN
-from .on_policy_runner_falcon_new import OnPolicyRunnerFalconNew
-from .on_policy_runner_whole_pipe import OnPolicyRunnerWholePipe
 from .on_policy_runner_whole_pipe_resi import OnPolicyRunnerWholePipeResi
-from .on_policy_runner_only_head import OnPolicyRunnerOnlyHead
 
-__all__ = ["OnPolicyRunner", "OnPolicyRunnerEnd2end", "OnPolicyRunnerFalcon", "OnPolicyRunnerOnlyCNN", "OnPolicyRunnerWholePipe", "OnPolicyRunnerWholePipeResi", "OnPolicyRunnerOnlyHead", "OnPolicyRunnerFalconNew"]
+__all__ = ["OnPolicyRunnerEnd2end", "OnPolicyRunnerWholePipeResi"]

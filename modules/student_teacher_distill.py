@@ -10,8 +10,6 @@ import torch.nn as nn
 from torch.distributions import Normal
 
 from rsl_rl.utils import resolve_nn_activation
-from .residual_actor_transformer import TransformerResidualNetwork
-from ipdb import set_trace
 
 
 class StudentTeacherDistill(nn.Module):
@@ -26,7 +24,9 @@ class StudentTeacherDistill(nn.Module):
         teacher_hidden_dims=[256, 256, 256],
         activation="elu",
         init_noise_std=0.1,
+        noise_std_type="scalar",
         history_length=10,
+        teacher_action_clip=None,
         **kwargs,
     ):
         if kwargs:
@@ -35,9 +35,15 @@ class StudentTeacherDistill(nn.Module):
                 + str([key for key in kwargs.keys()])
             )
         super().__init__()
+        if teacher_action_clip is None:
+            raise ValueError("teacher_action_clip must be provided by the task config")
+        if noise_std_type != "scalar":
+            raise ValueError("StudentTeacherDistill supports only scalar action noise")
         activation = resolve_nn_activation(activation)
         self.loaded_teacher = False  # indicates if teacher has been loaded
         self.history_length = history_length
+        self.teacher_action_clip = teacher_action_clip
+        self.noise_std_type = noise_std_type
 
         mlp_input_dim_s = num_student_obs
         mlp_input_dim_t = num_teacher_obs
@@ -96,7 +102,8 @@ class StudentTeacherDistill(nn.Module):
         self.teacher = TeacherResidualWrapper(
             residual_actor=teacher_residual_actor,
             base_actor=teacher_base_actor,
-            history_length=self.history_length
+            history_length=self.history_length,
+            action_clip=self.teacher_action_clip,
         )
 
     def reset(self, dones=None, hidden_states=None):
@@ -218,11 +225,12 @@ class StudentTeacherDistill(nn.Module):
 
 class TeacherResidualWrapper(nn.Module):
     
-    def __init__(self, residual_actor, base_actor, history_length):
+    def __init__(self, residual_actor, base_actor, history_length, action_clip):
         super().__init__()
         self.teacher_residual_actor = residual_actor
         self.teacher_base_actor = base_actor
         self.history_length = history_length
+        self.action_clip = action_clip
     
     def forward(self, observations):
         flattened_obs = observations.reshape(observations.shape[0], self.history_length, -1)
@@ -244,7 +252,7 @@ class TeacherResidualWrapper(nn.Module):
         # 2026-05-28 teacher: nominal |a|max ~3, but ANY obs channel at +-10 gives
         # 1e4-1e5 -- fallen/impact states poison the BC targets; same failure mode
         # fixed in the HM variant 2026-07-25). Clamp targets so garbage states stay
-        # bounded; +-15 never touches nominal behavior.
+        # bounded; the configured limit does not touch nominal behavior.
         # MIXED TEACHER: empty-hand envs are supervised by the pure locomotion
         # base (stable), everything else by base+residual (carrying skill).
         total = base_action + residual_action
@@ -257,7 +265,7 @@ class TeacherResidualWrapper(nn.Module):
                 print(f"[MIXTEACH-DBG] call={_n} loco-supervised={int(m.sum())}/{m.shape[0]} "
                       f"mean|base-(base+resi)|={_d:.4f}", flush=True)
             total = torch.where(m.unsqueeze(1), base_action, total)
-        return torch.clamp(total, -15.0, 15.0)
+        return torch.clamp(total, -self.action_clip, self.action_clip)
 
     def eval(self):
         self.teacher_residual_actor.eval()

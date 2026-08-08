@@ -239,8 +239,24 @@ class TeacherResidualWrapper(nn.Module):
         base_actor_obs_flat = base_actor_obs.reshape(observations.shape[0], -1)
         
         base_action = self.teacher_base_actor(base_actor_obs_flat)
-        
-        return base_action + residual_action
+
+        # The residual MLP is unbounded and explodes on OOD states (student falls,
+        # impact joint-vel spikes, its own large past actions in the obs -- a
+        # self-amplifying loop measured up to |a|~1e5, poisoning the BC targets;
+        # nominal |a|max is ~7). Clamp targets so garbage states stay bounded.
+        # MIXED TEACHER: empty-hand envs are supervised by the pure locomotion
+        # base (stable), everything else by base+residual (carrying skill).
+        total = base_action + residual_action
+        m = getattr(self, "no_object_mask", None)
+        if m is not None and m.shape[0] == total.shape[0]:
+            _n = getattr(self, "_mix_dbg_n", 0)
+            if _n < 3:
+                self._mix_dbg_n = _n + 1
+                _d = (base_action - total).abs().mean().item()
+                print(f"[MIXTEACH-DBG] call={_n} loco-supervised={int(m.sum())}/{m.shape[0]} "
+                      f"mean|base-(base+resi)|={_d:.4f}", flush=True)
+            total = torch.where(m.unsqueeze(1), base_action, total)
+        return torch.clamp(total, -15.0, 15.0)
     
     def eval(self):
         self.teacher_residual_actor.eval()

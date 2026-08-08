@@ -39,6 +39,8 @@ class OnPolicyRunnerEnd2end:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
+        _dbg_rank = os.getenv("RANK", "0")
+        print(f"[DDP-DBG rank={_dbg_rank}] Runner.__init__ entry, device={device}", flush=True)
         self.cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
@@ -46,7 +48,9 @@ class OnPolicyRunnerEnd2end:
         self.env = env
 
         # check if multi-gpu is enabled
+        print(f"[DDP-DBG rank={_dbg_rank}] before _configure_multi_gpu (init_process_group)", flush=True)
         self._configure_multi_gpu()
+        print(f"[DDP-DBG rank={_dbg_rank}] after _configure_multi_gpu", flush=True)
 
         # resolve training type depending on the algorithms
         if self.alg_cfg["class_name"] == "PPO":
@@ -62,7 +66,9 @@ class OnPolicyRunnerEnd2end:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
 
         # resolve dimensions of observations
+        print(f"[DDP-DBG rank={_dbg_rank}] before env.get_observations", flush=True)
         obs, extras = self.env.get_observations()
+        print(f"[DDP-DBG rank={_dbg_rank}] after env.get_observations, obs.shape={obs.shape}", flush=True)
         num_obs = obs.shape[1]
 
         # resolve type of privileged observations
@@ -85,9 +91,11 @@ class OnPolicyRunnerEnd2end:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
+        print(f"[DDP-DBG rank={_dbg_rank}] before policy_class build ({policy_class.__name__})", flush=True)
         policy: ActorCritic | ActorCriticEnd2end | ActorCriticEnd2endFollowing | ActorCriticWbcEnd2endFollowing | ActorCriticWbcEnd2endQuat | ActorCriticWbcEnd2endQuatHMTeacher | ActorCriticWbcEnd2endQuatTransformer | ActorCriticEnd2endFollowingGtCommand | ActorCriticFalconWbcEnd2endFollowing | ActorCriticTransformer | ActorCriticRecurrent | StudentTeacher | StudentTeacherRecurrent | StudentTeacherDistill_HM = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)  # 6_2: 是ActorCritic
+        print(f"[DDP-DBG rank={_dbg_rank}] after policy build + .to({self.device})", flush=True)
 
         # resolve dimension of rnd gated state
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
@@ -109,7 +117,9 @@ class OnPolicyRunnerEnd2end:
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
+        print(f"[DDP-DBG rank={_dbg_rank}] before alg build ({alg_class.__name__})", flush=True)
         self.alg: PPO | PPO_End2end | PPO_WbcEnd2end | PPO_WbcEnd2endQuat | PPO_End2endGtCommand | Distillation = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        print(f"[DDP-DBG rank={_dbg_rank}] after alg build", flush=True)
 
         # store training configuration
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -146,6 +156,8 @@ class OnPolicyRunnerEnd2end:
         self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):  # noqa: C901
+        _dbg_rank = os.getenv("RANK", "0")
+        print(f"[DDP-DBG rank={_dbg_rank}] learn() entry", flush=True)
 
         # initialize writer
         if self.log_dir is not None and self.writer is None and not self.disable_logs:
@@ -202,8 +214,10 @@ class OnPolicyRunnerEnd2end:
 
         # Ensure all parameters are in-synced
         if self.is_distributed:
-            print(f"Synchronizing parameters for rank {self.gpu_global_rank}...")
+            print(f"[DDP-DBG rank={_dbg_rank}] reached broadcast_parameters collective", flush=True)
+            print(f"Synchronizing parameters for rank {self.gpu_global_rank}...", flush=True)
             self.alg.broadcast_parameters()
+            print(f"[DDP-DBG rank={_dbg_rank}] broadcast_parameters returned", flush=True)
             # TODO: Do we need to synchronize empirical normalizers?
             #   Right now: No, because they all should converge to the same values "asymptotically".
 
@@ -540,8 +554,11 @@ class OnPolicyRunnerEnd2end:
             raise ValueError(f"Global rank '{self.gpu_global_rank}' is greater than or equal to world size '{self.gpu_world_size}'.")
 
         # initialize torch distributed
+        print(f"[DDP-DBG rank={self.gpu_global_rank}] calling dist.init_process_group(world={self.gpu_world_size})", flush=True)
         torch.distributed.init_process_group(
             backend="nccl", rank=self.gpu_global_rank, world_size=self.gpu_world_size
         )
+        print(f"[DDP-DBG rank={self.gpu_global_rank}] dist.init_process_group returned", flush=True)
         # set device to the local rank
         torch.cuda.set_device(self.gpu_local_rank)
+        print(f"[DDP-DBG rank={self.gpu_global_rank}] torch.cuda.set_device({self.gpu_local_rank}) done", flush=True)

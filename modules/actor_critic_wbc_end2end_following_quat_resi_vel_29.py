@@ -348,6 +348,10 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
 
         # 现在可以安全加载了
         super().load_state_dict(state_dict, strict=False)
-        assert torch.equal(state_dict['actor.0.bias'], self.actor.state_dict()['0.bias'])
+        # DDP broadcast_parameters re-enters this on every distributed init: the
+        # source tensor is on rank 0's cuda:0 while self.actor sits on cuda:rank.
+        # torch.equal across devices raises, so move both to the same device.
+        _self_bias = self.actor.state_dict()['0.bias']
+        assert torch.equal(state_dict['actor.0.bias'].to(_self_bias.device), _self_bias)
         # self._verify_initialization()
         return True

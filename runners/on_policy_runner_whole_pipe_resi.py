@@ -230,6 +230,16 @@ class OnPolicyRunnerWholePipeResi:
             # with torch.no_grad():
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
+                    # MIXED TEACHER (2026-08-07): tell the teacher which envs are
+                    # empty-handed so it supervises those with the PURE LOCOMOTION
+                    # output instead of base+residual. The collab residual wanders
+                    # with no bar (measured 0.6-4.9 m / 60 s in sim2sim); the loco
+                    # base is proven stable (sim2sim schedule 11/11 PASS).
+                    _tm = getattr(self.env, "no_object_mask", None)
+                    if _tm is not None:
+                        _t = getattr(self.alg.policy, "teacher", None)
+                        if _t is not None:
+                            _t.no_object_mask = _tm
                     actions = self.alg.act(obs, privileged_obs, inference=True)
                     # Step the environment
                     obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
@@ -448,7 +458,11 @@ class OnPolicyRunnerWholePipeResi:
             self.writer.save_model(path, self.current_learning_iteration)
 
     def load(self, path: str, load_optimizer: bool = True):
-        loaded_dict = torch.load(path, weights_only=False)
+        # map_location=self.device: under DDP, ckpt was saved on cuda:0 but ranks 1+
+        # have their actor/critic on cuda:rank. Without this, the assert in
+        # ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29.load_state_dict
+        # tries torch.equal across devices and raises.
+        loaded_dict = torch.load(path, weights_only=False, map_location=self.device)
         # -- Load model
         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
         # -- Load RND model if used

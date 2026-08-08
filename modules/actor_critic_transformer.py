@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 from rsl_rl.modules.actor_critic import ActorCritic
-import sys
-sys.path.append("/home/yushidu/Documents/Humanoid/IsaacLab")
-from SensorTransformer import SensorTransformer
+from .sensor_transformer import SensorTransformer
 from ipdb import set_trace
 
 class ActorCriticTransformer(ActorCritic):

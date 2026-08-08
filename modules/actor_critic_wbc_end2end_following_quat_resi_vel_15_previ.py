@@ -13,10 +13,7 @@ import torch.nn.functional as F
 from rsl_rl.utils import resolve_nn_activation
 
 import os
-value = os.getenv("IsaacLab_Root")
-import sys
-sys.path.append(value)
-from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, TemporalSensorCNN_OnlyCnn
+from .sensor_cnn import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen, TemporalSensorCNN_OnlyCnn
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
@@ -58,7 +55,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel15Previ(nn.Module):
         self.predicted_command = None
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_backbone_logs_dir = os.getenv("LeggedLab_Root") + "/new_backbone_logs"
+        new_backbone_logs_dir = os.path.join(os.environ.get("COLA_ROOT", os.getcwd()), "new_backbone_logs")
         base_log_dir = os.path.join(new_backbone_logs_dir, log_time)
         residual_log_dir = os.path.join(base_log_dir, "residual")
         os.makedirs(residual_log_dir, exist_ok=True)

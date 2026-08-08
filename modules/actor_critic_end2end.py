@@ -12,10 +12,7 @@ from torch.distributions import Normal
 from rsl_rl.utils import resolve_nn_activation
 
 import os
-value = os.getenv("IsaacLab_Root")
-import sys
-sys.path.append(value)
-from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
+from .sensor_cnn import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 
 from ipdb import set_trace
 

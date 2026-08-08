@@ -13,10 +13,7 @@ import torch.nn.functional as F
 from rsl_rl.utils import resolve_nn_activation
 
 import os
-value = os.getenv("IsaacLab_Root")
-import sys
-sys.path.append(value)
-from SensorCNN import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
+from .sensor_cnn import SensorCNN, TemporalSensorCNN, TemporalSensorCNN_Seqlen
 from torch.utils.tensorboard import SummaryWriter
 import os 
 from datetime import datetime
@@ -58,7 +55,7 @@ class ActorCriticWbcEnd2endFollowing(nn.Module):
         self.env = env
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_log_dir = f"/home/yushidu/Documents/Humanoid/LeggedLab/new_backbone_logs/{log_time}"
+        base_log_dir = os.path.join(os.environ.get("COLA_ROOT", os.getcwd()), "new_backbone_logs", log_time)
         actor_log_dir = os.path.join(base_log_dir, "actor_cnn")
         critic_log_dir = os.path.join(base_log_dir, "critic_cnn")
         os.makedirs(actor_log_dir, exist_ok=True)

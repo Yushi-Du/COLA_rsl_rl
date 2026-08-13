@@ -26,6 +26,7 @@ class StudentTeacherDistill(nn.Module):
         init_noise_std=0.1,
         noise_std_type="scalar",
         history_length=10,
+        teacher_base_privileged_obs_per_frame=13,
         teacher_action_clip=None,
         **kwargs,
     ):
@@ -42,6 +43,13 @@ class StudentTeacherDistill(nn.Module):
         activation = resolve_nn_activation(activation)
         self.loaded_teacher = False  # indicates if teacher has been loaded
         self.history_length = history_length
+        if teacher_base_privileged_obs_per_frame < 0:
+            raise ValueError(
+                "teacher_base_privileged_obs_per_frame must be non-negative"
+            )
+        self.teacher_base_privileged_obs_per_frame = (
+            teacher_base_privileged_obs_per_frame
+        )
         self.teacher_action_clip = teacher_action_clip
         self.noise_std_type = noise_std_type
 
@@ -66,12 +74,19 @@ class StudentTeacherDistill(nn.Module):
 
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
-        Normal.set_default_validate_args = False
+        Normal.set_default_validate_args(False)
 
     def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
 
         self.teacher_residual_obs_dim = num_teacher_obs
-        self.teacher_base_obs_dim = num_teacher_obs - self.history_length * (13)
+        self.teacher_base_obs_dim = (
+            num_teacher_obs
+            - self.history_length * self.teacher_base_privileged_obs_per_frame
+        )
+        if self.teacher_base_obs_dim <= 0:
+            raise ValueError(
+                "teacher base privileged observation tail is larger than the observation"
+            )
         
         teacher_residual_actor_layers = []
         teacher_residual_actor_layers.append(nn.Linear(self.teacher_residual_obs_dim, teacher_hidden_dims[0]))
@@ -99,6 +114,9 @@ class StudentTeacherDistill(nn.Module):
             residual_actor=teacher_residual_actor,
             base_actor=teacher_base_actor,
             history_length=self.history_length,
+            base_privileged_obs_per_frame=(
+                self.teacher_base_privileged_obs_per_frame
+            ),
             action_clip=self.teacher_action_clip,
         )
 
@@ -204,11 +222,19 @@ class StudentTeacherDistill(nn.Module):
 
 class TeacherResidualWrapper(nn.Module):
     
-    def __init__(self, residual_actor, base_actor, history_length, action_clip):
+    def __init__(
+        self,
+        residual_actor,
+        base_actor,
+        history_length,
+        base_privileged_obs_per_frame,
+        action_clip,
+    ):
         super().__init__()
         self.teacher_residual_actor = residual_actor
         self.teacher_base_actor = base_actor
         self.history_length = history_length
+        self.base_privileged_obs_per_frame = base_privileged_obs_per_frame
         self.action_clip = action_clip
     
     def forward(self, observations):
@@ -219,7 +245,12 @@ class TeacherResidualWrapper(nn.Module):
         pose_commands = flattened_obs[:, :, 4:18]
         joint_pos_no_hand = flattened_obs[:, :, 18:18+29]
         joint_vel_no_hand = flattened_obs[:, :, 18+29:18+29+29]
-        other_features = flattened_obs[:, :, 18+29+29:-13]
+        privileged_start = (
+            -self.base_privileged_obs_per_frame
+            if self.base_privileged_obs_per_frame
+            else None
+        )
+        other_features = flattened_obs[:, :, 18+29+29:privileged_start]
         
         original_commands = torch.cat([commands, pose_commands], dim=2)
         base_actor_obs = torch.cat([original_commands, joint_pos_no_hand, joint_vel_no_hand, other_features], dim=2)

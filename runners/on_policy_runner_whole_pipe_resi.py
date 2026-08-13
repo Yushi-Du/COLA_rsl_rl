@@ -408,6 +408,7 @@ class OnPolicyRunnerWholePipeResi:
                 # the student's observation space may differ.
                 self.privileged_obs_normalizer.load_state_dict(loaded_dict["obs_norm_state_dict"])
         if load_optimizer and resumed_training:
+            self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
             if self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
         if resumed_training:

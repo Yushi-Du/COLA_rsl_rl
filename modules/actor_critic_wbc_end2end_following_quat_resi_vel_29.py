@@ -33,6 +33,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         residual_hidden_init_std: float | None = None,
         residual_final_init_std: float | None = None,
         residual_bias_init: float | None = None,
+        base_privileged_obs_per_frame: int = 13,
         device="cuda:0",
         env=None,
         **kwargs,
@@ -60,6 +61,9 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.residual_hidden_init_std = residual_hidden_init_std
         self.residual_final_init_std = residual_final_init_std
         self.residual_bias_init = residual_bias_init
+        if base_privileged_obs_per_frame < 0:
+            raise ValueError("base_privileged_obs_per_frame must be non-negative")
+        self.base_privileged_obs_per_frame = base_privileged_obs_per_frame
 
         log_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_backbone_logs_dir = os.path.join(os.environ.get("COLA_ROOT", os.getcwd()), "new_backbone_logs")
@@ -71,8 +75,18 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.residual_actor_obs_dim = num_actor_obs
         self.residual_critic_obs_dim = num_critic_obs
 
-        self.actor_obs_dim = num_actor_obs - self.history_length * (13)
-        self.critic_obs_dim = num_critic_obs - self.history_length * (13)
+        self.actor_obs_dim = (
+            num_actor_obs
+            - self.history_length * self.base_privileged_obs_per_frame
+        )
+        self.critic_obs_dim = (
+            num_critic_obs
+            - self.history_length * self.base_privileged_obs_per_frame
+        )
+        if self.actor_obs_dim <= 0 or self.critic_obs_dim <= 0:
+            raise ValueError(
+                "base privileged observation tail is larger than the observation"
+            )
 
         self.command_idx = 4
         self.pose_command_idx = 4+14
@@ -253,8 +267,12 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         pose_commands = flattened_obs[:, :, 4:18]
         joint_pos = flattened_obs[:, :, 18:18+29]  # (-1, history_length, 29)
         joint_vel = flattened_obs[:, :, 18+29:18+29+29]  # (-1, history_length, 29)
-        other_features = flattened_obs[:, :, 18+29+29:-13]  # (-1, history_length, other_features_dim)
-        previliged_features = flattened_obs[:, :, -13:]  # (-1, history_length, 13)
+        privileged_start = (
+            -self.base_privileged_obs_per_frame
+            if self.base_privileged_obs_per_frame
+            else None
+        )
+        other_features = flattened_obs[:, :, 18+29+29:privileged_start]
         
         self.total_steps += 1
 
@@ -273,8 +291,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         pose_commands = flattened_obs[:, :, 4:18]
         joint_pos = flattened_obs[:, :, 18:18+29]  # (-1, history_length, 29)
         joint_vel = flattened_obs[:, :, 18+29:18+29+29]  # (-1, history_length, 29)
-        other_features = flattened_obs[:, :, 18+29+29:-(13+5)]  # (-1, history_length, other_features_dim)
-        previliged_features = flattened_obs[:, :, -(13+5):-5]  # (-1, history_length, 13)
+        privileged_start = -(self.base_privileged_obs_per_frame + 5)
+        other_features = flattened_obs[:, :, 18+29+29:privileged_start]
         other_critic_features = flattened_obs[:, :, -5:]
 
         original_commands = torch.cat([commands, pose_commands], dim=2)  # (-1, history_length, 18)
@@ -336,10 +354,18 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                   `OnPolicyRunner` to determine how to load further parameters (relevant for, e.g., distillation).
         """
 
-        super().load_state_dict(state_dict, strict=False)
+        is_same_phase = any(
+            key.startswith("residual_actor.")
+            or key.startswith("residual_critic.")
+            for key in state_dict
+        )
+        super().load_state_dict(
+            state_dict,
+            strict=strict if is_same_phase else False,
+        )
         # DDP broadcast_parameters re-enters this on every distributed init: the
         # source tensor is on rank 0's cuda:0 while self.actor sits on cuda:rank.
         # torch.equal across devices raises, so move both to the same device.
         _self_bias = self.actor.state_dict()['0.bias']
         assert torch.equal(state_dict['actor.0.bias'].to(_self_bias.device), _self_bias)
-        return True
+        return is_same_phase

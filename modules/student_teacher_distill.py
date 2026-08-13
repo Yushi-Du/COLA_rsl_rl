@@ -48,7 +48,6 @@ class StudentTeacherDistill(nn.Module):
         mlp_input_dim_s = num_student_obs
         mlp_input_dim_t = num_teacher_obs
 
-        # student
         student_layers = []
         student_layers.append(nn.Linear(mlp_input_dim_s, student_hidden_dims[0]))
         student_layers.append(activation)
@@ -60,16 +59,13 @@ class StudentTeacherDistill(nn.Module):
                 student_layers.append(activation)
         self.student = nn.Sequential(*student_layers)
 
-        # teacher
         self._build_residual_teacher(num_teacher_obs, num_actions, teacher_hidden_dims, activation)
 
         print(f"Student MLP: {self.student}")
         print(f"Teacher: {self.teacher}")
 
-        # action noise
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
-        # disable args validation for speedup
         Normal.set_default_validate_args = False
 
     def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
@@ -154,23 +150,15 @@ class StudentTeacherDistill(nn.Module):
             bool: Whether this training resumes a previous training. This flag is used by the `load()` function of
                   `OnPolicyRunner` to determine how to load further parameters.
         """
-        # set_trace()  # disabled: stray ipdb breakpoint hung headless SLURM distillation jobs at teacher load
-
         if any("student" in key for key in state_dict.keys()):  # loading parameters from distillation training
             super().load_state_dict(state_dict, strict=strict)
-            # set flag for successfully loading the parameters
             self.loaded_teacher = True
             self.teacher.eval()
             return True
 
-        # check if state_dict contains teacher and student or just teacher parameters
         if any("teacher" in key for key in state_dict.keys()):  # loading parameters from rl training
-            # rename keys to match teacher and remove critic parameters
             teacher_state_dict = {}
             student_state_dict = {}
-            # for key, value in state_dict.items():
-            #     if "actor." in key:
-            #         teacher_state_dict[key.replace("actor.", "")] = value
             for key, value in state_dict.items():
                 if "teacher." in key:
                     teacher_state_dict[key.replace("teacher.", "")] = value
@@ -178,21 +166,15 @@ class StudentTeacherDistill(nn.Module):
                     student_state_dict[key.replace("student.", "")] = value
             self.teacher.load_state_dict(teacher_state_dict, strict=strict)
             self.student.load_state_dict(student_state_dict, strict=strict)
-            # also load recurrent memory if teacher is recurrent
             if self.is_recurrent and self.teacher_recurrent:
                 raise NotImplementedError("Loading recurrent memory for the teacher is not implemented yet")  # TODO
-            # set flag for successfully loading the parameters
             self.loaded_teacher = True
             self.teacher.eval()
             if any("student" in key for key in state_dict.keys()):
                 return True
             return False
         elif any("actor" in key for key in state_dict.keys()):  # loading parameters from rl training
-            # rename keys to match teacher and remove critic parameters
             teacher_state_dict = {}
-            # for key, value in state_dict.items():
-            #     if "actor." in key:
-            #         teacher_state_dict[key.replace("actor.", "")] = value
             for key, value in state_dict.items():
                 if "actor." in key:
                     if key.startswith("residual_"):
@@ -200,16 +182,13 @@ class StudentTeacherDistill(nn.Module):
                     else:
                         teacher_state_dict[key.replace("actor.", "teacher_base_actor.")] = value
             self.teacher.load_state_dict(teacher_state_dict, strict=strict)
-            # also load recurrent memory if teacher is recurrent
             if self.is_recurrent and self.teacher_recurrent:
                 raise NotImplementedError("Loading recurrent memory for the teacher is not implemented yet")  # TODO
-            # set flag for successfully loading the parameters
             self.loaded_teacher = True
             self.teacher.eval()
             return False
         elif any("student" in key for key in state_dict.keys()):  # loading parameters from distillation training
             super().load_state_dict(state_dict, strict=strict)
-            # set flag for successfully loading the parameters
             self.loaded_teacher = True
             self.teacher.eval()
             return True
@@ -248,13 +227,9 @@ class TeacherResidualWrapper(nn.Module):
         
         base_action = self.teacher_base_actor(base_actor_obs_flat)
 
-        # The residual MLP is unbounded and explodes on OOD states (measured on the
-        # 2026-05-28 teacher: nominal |a|max ~3, but ANY obs channel at +-10 gives
-        # 1e4-1e5 -- fallen/impact states poison the BC targets; same failure mode
-        # fixed in the HM variant 2026-07-25). Clamp targets so garbage states stay
-        # bounded; the configured limit does not touch nominal behavior.
-        # MIXED TEACHER: empty-hand envs are supervised by the pure locomotion
-        # base (stable), everything else by base+residual (carrying skill).
+        # Clamp residual targets so out-of-distribution impact states cannot
+        # poison behavior-cloning targets. No-object environments use the stable
+        # locomotion teacher; carrying environments use base plus residual.
         total = base_action + residual_action
         m = getattr(self, "no_object_mask", None)
         if m is not None and m.shape[0] == total.shape[0]:

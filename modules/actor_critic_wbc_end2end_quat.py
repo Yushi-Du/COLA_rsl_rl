@@ -60,8 +60,6 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         self.actor_cnn_writer = SummaryWriter(log_dir=actor_log_dir)
         self.critic_cnn_writer = SummaryWriter(log_dir=critic_log_dir)
 
-        # self.mono_actor_obs_dim = num_actor_obs - int(history_length * 48)
-        # self.mono_critic_obs_dim = num_critic_obs - int(history_length * 48)
         self.mono_actor_obs_dim = num_actor_obs
         self.mono_critic_obs_dim = num_critic_obs
         self.actor_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
@@ -70,7 +68,6 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
 
         mlp_input_dim_a = self.mono_actor_obs_dim
         mlp_input_dim_c = self.mono_critic_obs_dim
-        # Policy
         actor_layers = []
         actor_layers.append(nn.Linear(mlp_input_dim_a, actor_hidden_dims[0]))
         actor_layers.append(activation)
@@ -82,7 +79,6 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
                 actor_layers.append(activation)
         self.actor = nn.Sequential(*actor_layers)
 
-        # Value function
         self.critic_cnn = TemporalSensorCNN_Seqlen(in_channels=3, out_channels=32, kernel_size=3, hidden_size=64, output_size=3, seq_len=6)
         self.critic_cnn.train()
         self.critic_cnn_optimizer = torch.optim.Adam(self.critic_cnn.parameters(), lr=1e-4)
@@ -101,7 +97,6 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
 
-        # Action noise
         self.noise_std_type = noise_std_type
         if self.noise_std_type == "scalar":
             self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
@@ -110,13 +105,10 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         else:
             raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
 
-        # Action distribution (populated in update_distribution)
         self.distribution = None
-        # disable args validation for speedup
         Normal.set_default_validate_args(False)
 
     @staticmethod
-    # not used at the moment
     def init_weights(sequential, scales):
         [
             torch.nn.init.orthogonal_(module.weight, gain=scales[idx])
@@ -141,115 +133,48 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
     
-    # 要改
     def actor_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        # commands = observations[:, :, 0:3]
-        # pose_commands = observations[:, :, 3:15]
-        # # set_trace()
-        # tactile_features = observations[:, :, 15:15+144]
-        # other_features = observations[:, :, 15+144:]
 
-        # commands = observations[:, :, 0:4]
-        # pose_commands = observations[:, :, 4:18]
-        # tactile_features = observations[:, :, 18:18+48]
-        # other_features = observations[:, :, 18+48:]
         
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:18]
         other_features = observations[:, :, 18:]
 
-        # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        # cnn_outputs = self.actor_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
-        # if self.env._actor_cnn_step < self.env.stage_two_steps:
-        #     # print('Here!')
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.actor_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.actor_cnn_optimizer.step()
 
-        #         self.actor_cnn_writer.add_scalar("loss", loss.item(), self.env._actor_cnn_step)
-        #         self.env._actor_cnn_step += 1
-        #         # print(self.env._actor_cnn_step)
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
-        # else:
-        #     final_commands = cnn_outputs
 
-        # self.env.predicted_tactile_command = final_commands[:, -1, :]
 
-        # return torch.cat([final_commands, other_features], dim=2)
         return torch.cat([commands, pose_commands, other_features], dim=2)
     
     def critic_cnn_forward(self, observations, inference=False):
-        # observations.shape: (num_envs, history_length, 240)
-        # commands = observations[:, :, 0:3]
-        # pose_commands = observations[:, :, 3:15]
-        # tactile_features = observations[:, :, 15:15+144]
-        # other_features = observations[:, :, 15+144:]
 
-        # commands = observations[:, :, 0:4]
-        # pose_commands = observations[:, :, 4:18]
-        # tactile_features = observations[:, :, 18:18+48]
-        # other_features = observations[:, :, 18+48:]
         
         commands = observations[:, :, 0:4]
         pose_commands = observations[:, :, 4:18]
         other_features = observations[:, :, 18:]
 
-        # recovered_outputs = tactile_features.reshape(tactile_features.shape[0], tactile_features.shape[1], 48, 3)
-        # cnn_outputs = self.critic_cnn(recovered_outputs)  # (num_envs, seq_len, 3)
 
-        # final_commands = cnn_outputs
-        # if self.env._critic_cnn_step < self.env.stage_two_steps:
-        #     if not inference:
-        #         self.total_steps += 1
-        #         self.critic_cnn_optimizer.zero_grad()
-        #         loss = F.mse_loss(cnn_outputs, commands)
-        #         loss.backward()
-        #         self.critic_cnn_optimizer.step()
 
-        #         self.critic_cnn_writer.add_scalar("loss", loss.item(), self.env._critic_cnn_step)
-        #         self.env._critic_cnn_step += 1
-        #     final_commands = commands  # warmup时短路掉整个actor_cnn
 
-        # return torch.cat([final_commands, other_features], dim=2)
         return torch.cat([commands, pose_commands, other_features], dim=2)
     
     def process_observations(self, observations, inference=False):
-        # num_envs = observations.shape[0]
-        # flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        # mlp_obs_0 = self.actor_cnn_forward(flattened_obs, inference)  
-        # total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
         
-        # return self.actor(total_mlp_obs)
         return self.actor(observations)
     
     def process_observations_critic(self, observations, inference=False):
-        # num_envs = observations.shape[0]
-        # flattened_obs = observations.reshape(num_envs, self.history_length, -1)
-        # mlp_obs_0 = self.critic_cnn_forward(flattened_obs, inference)  
-        # total_mlp_obs = mlp_obs_0.reshape(num_envs, -1)
 
-        # return self.critic(total_mlp_obs)
         return self.critic(observations)
 
     def update_distribution(self, observations, inference=False):
 
         mean = self.process_observations(observations, inference)
-        # print(mean.shape)
-        # if mean.shape[0] != self.num_envs:
-        #     set_trace()
-        # compute standard deviation
         if self.noise_std_type == "scalar":
             std = self.std.expand_as(mean)
         elif self.noise_std_type == "log":
             std = torch.exp(self.log_std).expand_as(mean)
         else:
             raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
-        # create distribution
         self.distribution = Normal(mean, std)
 
     def act(self, observations, inference=False, **kwargs):
@@ -264,7 +189,6 @@ class ActorCriticWbcEnd2endQuat(nn.Module):
         return actions_mean
 
     def evaluate(self, critic_observations, inference=False, **kwargs):
-        # value = self.critic(critic_observations)
         value = self.process_observations_critic(critic_observations, inference)
         return value
 

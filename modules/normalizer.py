@@ -92,10 +92,8 @@ class EmpiricalDiscountedVariationNormalization(nn.Module):
 
     def forward(self, rew):
         if self.training:
-            # update discounected rewards
             avg = self.disc_avg.update(rew)
 
-            # update moments from discounted rewards
             self.emp_norm.update(avg)
 
         if self.emp_norm._std > 0:

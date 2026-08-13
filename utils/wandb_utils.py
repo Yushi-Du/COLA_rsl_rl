@@ -21,7 +21,6 @@ class WandbSummaryWriter(SummaryWriter):
     def __init__(self, log_dir: str, flush_secs: int, cfg):
         super().__init__(log_dir, flush_secs)
 
-        # Get the run name
         run_name = os.path.split(log_dir)[-1]
 
         try:
@@ -34,10 +33,8 @@ class WandbSummaryWriter(SummaryWriter):
         except KeyError:
             entity = None
 
-        # Initialize wandb
         wandb.init(project=project, entity=entity, name=run_name)
 
-        # Add log directory to wandb
         wandb.config.update({"log_dir": log_dir})
 
         self.name_map = {

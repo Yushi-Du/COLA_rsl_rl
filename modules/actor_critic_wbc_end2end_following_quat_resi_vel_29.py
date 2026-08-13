@@ -82,7 +82,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.joint_vel_idx = 4+14+3+3+29+29
         self.prev_action_idx = 4+14+3+3+29+29+29
 
-        # Residual Actor
         residual_actor_layers = []
         residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
         residual_actor_layers.append(activation)
@@ -94,7 +93,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                 residual_actor_layers.append(activation)
         self.residual_actor = nn.Sequential(*residual_actor_layers)
 
-        # Policy
         actor_layers = []
         actor_layers.append(nn.Linear(self.actor_obs_dim, actor_hidden_dims[0]))
         actor_layers.append(activation)
@@ -106,7 +104,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                 actor_layers.append(activation)
         self.actor = nn.Sequential(*actor_layers)
 
-        # Value function
         critic_layers = []
         critic_layers.append(nn.Linear(self.critic_obs_dim, critic_hidden_dims[0]))
         critic_layers.append(activation)
@@ -118,7 +115,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                 critic_layers.append(activation)
         self.critic = nn.Sequential(*critic_layers)
 
-        # New Value function for predicted commands
         residual_critic_layers = []
         residual_critic_layers.append(nn.Linear(self.residual_critic_obs_dim, critic_hidden_dims[0]))
         residual_critic_layers.append(activation)
@@ -135,7 +131,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         print(f"Residual Actor MLP: {self.residual_actor}")
         print(f"Residual Critic MLP: {self.residual_critic}")
 
-        # Action noise
         self.noise_std_type = noise_std_type
         if self.noise_std_type == "scalar":
             self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
@@ -144,9 +139,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         else:
             raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}. Should be 'scalar' or 'log'")
 
-        # Action distribution (populated in update_distribution)
         self.distribution = None
-        # disable args validation for speedup
         Normal.set_default_validate_args(False)
 
         self._freeze_base_networks()
@@ -154,7 +147,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self._initialize_residual_networks()
     
     def _freeze_base_networks(self):
-        """冻结原网络参数，提高训练效率"""
+        """Freeze the base actor and critic during residual training."""
         for param in self.actor.parameters():
             param.requires_grad = False
         for param in self.critic.parameters():
@@ -168,7 +161,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         print(f"  Residual Critic: {sum(p.numel() for p in self.residual_critic.parameters()):,} 参数")
 
     def _initialize_residual_networks(self):
-        """零初始化 residual 网络"""
+        """Initialize the residual actor and critic near zero."""
         
         def init_layer(layer, is_final=False):
             if isinstance(layer, nn.Linear):
@@ -190,29 +183,24 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         
         print("初始化 Residual 网络:")
         
-        # 初始化 residual actor
         print("- Residual Actor:")
         for i, layer in enumerate(self.residual_actor):
             is_final = (i == len(self.residual_actor) - 1)
             init_layer(layer, is_final)
         
-        # 初始化 residual critic
         print("- Residual Critic:")
         for i, layer in enumerate(self.residual_critic):
             is_final = (i == len(self.residual_critic) - 1)
             init_layer(layer, is_final)
         
-        # 验证初始化效果
         self._verify_initialization()
     
     def _verify_initialization(self):
-        """验证初始化效果"""
+        """Report the initial residual-network output ranges."""
         with torch.no_grad():
-            # 测试数据
             dummy_obs = torch.randn(32, self.residual_actor_obs_dim, device=next(self.residual_actor.parameters()).device)
             dummy_obs_critic = torch.randn(32, self.residual_critic_obs_dim, device=next(self.residual_critic.parameters()).device)
             
-            # 计算初始输出
             residual_actor_out = self.residual_actor(dummy_obs)
             residual_critic_out = self.residual_critic(dummy_obs_critic)
             
@@ -222,7 +210,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
             print(f"  Residual Critic 输出范围: [{residual_critic_out.min():.6f}, {residual_critic_out.max():.6f}]")
             print(f"  Residual Critic 平均绝对值: {residual_critic_out.abs().mean():.6f}")
             
-            # 检查是否接近零
             if residual_actor_out.abs().mean() < 1e-5:
                 print("  ✅ Residual Actor 成功初始化为接近零")
             else:
@@ -234,7 +221,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                 print("  ⚠️  Residual Critic 初始化可能有问题")
 
     @staticmethod
-    # not used at the moment
     def init_weights(sequential, scales):
         [
             torch.nn.init.orthogonal_(module.weight, gain=scales[idx])
@@ -279,7 +265,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
 
         return actor_observations, residual_action
     
-    # 第一种方式：老的critics还是给29维的action打分，只不过新增了一个根据previleged信息生成更真实predicted_command的网络，不太合理因为不知道新增的预测command的网络该怎样用
     def critic_forward(self, observations, inference=False):
         # observations: (-1, history_length*single_frame_observations)
         flattened_obs = observations.reshape(observations.shape[0], self.history_length, -1)
@@ -335,7 +320,6 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         return actions_mean
 
     def evaluate(self, critic_observations, inference=False, **kwargs):
-        # value = self.critic(critic_observations)
         value = self.process_observations_critic(critic_observations, inference)
         return value
 
@@ -352,16 +336,10 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                   `OnPolicyRunner` to determine how to load further parameters (relevant for, e.g., distillation).
         """
 
-        """处理参数维度扩展的加载"""
-
-        # to verify
-
-        # 现在可以安全加载了
         super().load_state_dict(state_dict, strict=False)
         # DDP broadcast_parameters re-enters this on every distributed init: the
         # source tensor is on rank 0's cuda:0 while self.actor sits on cuda:rank.
         # torch.equal across devices raises, so move both to the same device.
         _self_bias = self.actor.state_dict()['0.bias']
         assert torch.equal(state_dict['actor.0.bias'].to(_self_bias.device), _self_bias)
-        # self._verify_initialization()
         return True

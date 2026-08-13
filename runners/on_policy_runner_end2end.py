@@ -22,17 +22,13 @@ class OnPolicyRunnerEnd2end:
     """On-policy runner for training and evaluation."""
 
     def __init__(self, env: VecEnv, train_cfg: dict, log_dir: str | None = None, device="cpu"):
-        _dbg_rank = os.getenv("RANK", "0")
-        print(f"[DDP-DBG rank={_dbg_rank}] Runner.__init__ entry, device={device}", flush=True)
         self.cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
 
-        print(f"[DDP-DBG rank={_dbg_rank}] before _configure_multi_gpu (init_process_group)", flush=True)
         self._configure_multi_gpu()
-        print(f"[DDP-DBG rank={_dbg_rank}] after _configure_multi_gpu", flush=True)
 
         algorithm_name = self.alg_cfg["class_name"]
         if algorithm_name != "PPO_WbcEnd2endQuat":
@@ -44,9 +40,7 @@ class OnPolicyRunnerEnd2end:
         self.policy_cfg["device"] = self.device
         self.policy_cfg["env"] = self.env
 
-        print(f"[DDP-DBG rank={_dbg_rank}] before env.get_observations", flush=True)
         obs, extras = self.env.get_observations()
-        print(f"[DDP-DBG rank={_dbg_rank}] after env.get_observations, obs.shape={obs.shape}", flush=True)
         num_obs = obs.shape[1]
 
         self.privileged_obs_type = (
@@ -64,11 +58,9 @@ class OnPolicyRunnerEnd2end:
                 "OnPolicyRunnerEnd2end only supports "
                 f"ActorCriticWbcEnd2endQuat, got {policy_name}."
             )
-        print(f"[DDP-DBG rank={_dbg_rank}] before policy build ({policy_name})", flush=True)
         policy = ActorCriticWbcEnd2endQuat(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
-        print(f"[DDP-DBG rank={_dbg_rank}] after policy build + .to({self.device})", flush=True)
 
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
             rnd_state = extras["observations"].get("rnd_state")
@@ -82,14 +74,12 @@ class OnPolicyRunnerEnd2end:
             self.alg_cfg["symmetry_cfg"]["_env"] = env
 
         self.alg_cfg.pop("class_name")
-        print(f"[DDP-DBG rank={_dbg_rank}] before alg build ({algorithm_name})", flush=True)
         self.alg = PPO_WbcEnd2endQuat(
             policy,
             device=self.device,
             **self.alg_cfg,
             multi_gpu_cfg=self.multi_gpu_cfg,
         )
-        print(f"[DDP-DBG rank={_dbg_rank}] after alg build", flush=True)
 
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
@@ -121,9 +111,6 @@ class OnPolicyRunnerEnd2end:
         self.git_status_repos = [rsl_rl.__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):  # noqa: C901
-        _dbg_rank = os.getenv("RANK", "0")
-        print(f"[DDP-DBG rank={_dbg_rank}] learn() entry", flush=True)
-
         if self.log_dir is not None and self.writer is None and not self.disable_logs:
             self.logger_type = self.cfg.get("logger", "tensorboard")
             self.logger_type = self.logger_type.lower()
@@ -171,10 +158,8 @@ class OnPolicyRunnerEnd2end:
             cur_ireward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         if self.is_distributed:
-            print(f"[DDP-DBG rank={_dbg_rank}] reached broadcast_parameters collective", flush=True)
             print(f"Synchronizing parameters for rank {self.gpu_global_rank}...", flush=True)
             self.alg.broadcast_parameters()
-            print(f"[DDP-DBG rank={_dbg_rank}] broadcast_parameters returned", flush=True)
             # TODO: Do we need to synchronize empirical normalizers?
             #   Right now: No, because they all should converge to the same values "asymptotically".
 
@@ -444,10 +429,7 @@ class OnPolicyRunnerEnd2end:
         if self.gpu_global_rank >= self.gpu_world_size:
             raise ValueError(f"Global rank '{self.gpu_global_rank}' is greater than or equal to world size '{self.gpu_world_size}'.")
 
-        print(f"[DDP-DBG rank={self.gpu_global_rank}] calling dist.init_process_group(world={self.gpu_world_size})", flush=True)
         torch.distributed.init_process_group(
             backend="nccl", rank=self.gpu_global_rank, world_size=self.gpu_world_size
         )
-        print(f"[DDP-DBG rank={self.gpu_global_rank}] dist.init_process_group returned", flush=True)
         torch.cuda.set_device(self.gpu_local_rank)
-        print(f"[DDP-DBG rank={self.gpu_global_rank}] torch.cuda.set_device({self.gpu_local_rank}) done", flush=True)

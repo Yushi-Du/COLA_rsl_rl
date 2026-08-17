@@ -463,12 +463,12 @@ class OnPolicyRunnerWholePipeResi:
         self.git_status_repos.append(repo_file_path)
 
     def _collect_topology_stats(self, rewbuffer, lenbuffer):
-        """Aggregate fixed-bar and no-object episode summaries across ranks."""
+        """Aggregate left-fixed, no-object, and right-fixed episode summaries."""
 
         topology_id = int(getattr(self.env, "cola_topology_id", -1))
-        values = torch.zeros(8, device=self.device, dtype=torch.float64)
-        if topology_id in (0, 1):
-            offset = 0 if topology_id == 0 else 4
+        values = torch.zeros(12, device=self.device, dtype=torch.float64)
+        if topology_id in (0, 1, 2):
+            offset = topology_id * 4
             if rewbuffer:
                 values[offset] = float(sum(rewbuffer))
                 values[offset + 1] = float(len(rewbuffer))
@@ -479,7 +479,7 @@ class OnPolicyRunnerWholePipeResi:
         if self.is_distributed:
             torch.distributed.all_reduce(values, op=torch.distributed.ReduceOp.SUM)
 
-        names = ("fixed_bar", "no_object")
+        names = ("fixed_bar_left", "no_object", "fixed_bar_right")
         stats = {}
         for index, name in enumerate(names):
             offset = index * 4

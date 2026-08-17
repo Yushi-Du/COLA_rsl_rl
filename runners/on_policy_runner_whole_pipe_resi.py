@@ -389,7 +389,12 @@ class OnPolicyRunnerWholePipeResi:
         if self.logger_type in ["neptune", "wandb"] and not self.disable_logs:
             self.writer.save_model(path, self.current_learning_iteration)
 
-    def load(self, path: str, load_optimizer: bool = True):
+    def load(
+        self,
+        path: str,
+        load_optimizer: bool = True,
+        reset_iteration: bool = False,
+    ):
         # map_location=self.device: under DDP, ckpt was saved on cuda:0 but ranks 1+
         # have their actor/critic on cuda:rank. Without this, the assert in
         # ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29.load_state_dict
@@ -412,7 +417,9 @@ class OnPolicyRunnerWholePipeResi:
             if self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
         if resumed_training:
-            self.current_learning_iteration = loaded_dict["iter"]
+            self.current_learning_iteration = (
+                0 if reset_iteration else loaded_dict["iter"]
+            )
         return loaded_dict["infos"]
 
     def get_inference_policy(self, device=None):

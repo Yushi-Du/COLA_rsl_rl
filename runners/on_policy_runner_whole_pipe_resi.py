@@ -51,6 +51,7 @@ class OnPolicyRunnerWholePipeResi:
 
         obs, extras = self.env.get_observations()
         num_obs = obs.shape[1]
+        self.num_obs = num_obs
 
         if self.training_type == "rl":
             if "critic" in extras["observations"]:
@@ -67,6 +68,7 @@ class OnPolicyRunnerWholePipeResi:
             num_privileged_obs = extras["observations"][self.privileged_obs_type].shape[1]
         else:
             num_privileged_obs = num_obs
+        self.num_privileged_obs = num_privileged_obs
 
         policy_name = self.policy_cfg.pop("class_name")
         expected_policy = {
@@ -259,6 +261,11 @@ class OnPolicyRunnerWholePipeResi:
 
             loss_dict = self.alg.update()
 
+            topology_stats = self._collect_topology_stats(
+                rewbuffer,
+                lenbuffer,
+            )
+
             stop = time.time()
             learn_time = stop - start
             self.current_learning_iteration = it
@@ -328,6 +335,9 @@ class OnPolicyRunnerWholePipeResi:
                 self.writer.add_scalar(
                     "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
                 )
+
+        for key, value in locs.get("topology_stats", {}).items():
+            self.writer.add_scalar(f"Topology/{key}", value, locs["it"])
 
         str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
 
@@ -451,6 +461,37 @@ class OnPolicyRunnerWholePipeResi:
 
     def add_git_repo_to_log(self, repo_file_path):
         self.git_status_repos.append(repo_file_path)
+
+    def _collect_topology_stats(self, rewbuffer, lenbuffer):
+        """Aggregate fixed-bar and no-object episode summaries across ranks."""
+
+        topology_id = int(getattr(self.env, "cola_topology_id", -1))
+        values = torch.zeros(8, device=self.device, dtype=torch.float64)
+        if topology_id in (0, 1):
+            offset = 0 if topology_id == 0 else 4
+            if rewbuffer:
+                values[offset] = float(sum(rewbuffer))
+                values[offset + 1] = float(len(rewbuffer))
+            if lenbuffer:
+                values[offset + 2] = float(sum(lenbuffer))
+                values[offset + 3] = float(len(lenbuffer))
+
+        if self.is_distributed:
+            torch.distributed.all_reduce(values, op=torch.distributed.ReduceOp.SUM)
+
+        names = ("fixed_bar", "no_object")
+        stats = {}
+        for index, name in enumerate(names):
+            offset = index * 4
+            if values[offset + 1] > 0:
+                stats[f"{name}/mean_reward"] = (
+                    values[offset] / values[offset + 1]
+                ).item()
+            if values[offset + 3] > 0:
+                stats[f"{name}/mean_episode_length"] = (
+                    values[offset + 2] / values[offset + 3]
+                ).item()
+        return stats
 
     """
     Helper functions.

@@ -209,7 +209,9 @@ class OnPolicyRunnerWholePipeResi:
                 for _ in range(self.num_steps_per_env):
                     # Route no-object rollouts through the pure-locomotion teacher;
                     # the residual teacher assumes a carried bar.
-                    _tm = getattr(self.env, "no_object_mask", None)
+                    _tm = getattr(self.env, "teacher_locomotion_mask", None)
+                    if _tm is None:
+                        _tm = getattr(self.env, "no_object_mask", None)
                     if _tm is not None:
                         _t = getattr(self.alg.policy, "teacher", None)
                         if _t is not None:

@@ -264,12 +264,6 @@ class TeacherResidualWrapper(nn.Module):
         total = base_action + residual_action
         m = getattr(self, "no_object_mask", None)
         if m is not None and m.shape[0] == total.shape[0]:
-            _n = getattr(self, "_mix_dbg_n", 0)
-            if _n < 3:
-                self._mix_dbg_n = _n + 1
-                _d = (base_action - total).abs().mean().item()
-                print(f"[MIXTEACH-DBG] call={_n} loco-supervised={int(m.sum())}/{m.shape[0]} "
-                      f"mean|base-(base+resi)|={_d:.4f}", flush=True)
             total = torch.where(m.unsqueeze(1), base_action, total)
         return torch.clamp(total, -self.action_clip, self.action_clip)
 

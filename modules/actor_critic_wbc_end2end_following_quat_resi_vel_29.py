@@ -167,12 +167,12 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         for param in self.critic.parameters():
             param.requires_grad = False
         
-        print(f"冻结原网络参数:")
-        print(f"  Actor: {sum(p.numel() for p in self.actor.parameters()):,} 参数")
-        print(f"  Critic: {sum(p.numel() for p in self.critic.parameters()):,} 参数")
-        print(f"可训练 Residual 参数:")
-        print(f"  Residual Actor: {sum(p.numel() for p in self.residual_actor.parameters()):,} 参数")
-        print(f"  Residual Critic: {sum(p.numel() for p in self.residual_critic.parameters()):,} 参数")
+        print("Frozen base-network parameters:")
+        print(f"  Actor: {sum(p.numel() for p in self.actor.parameters()):,} parameters")
+        print(f"  Critic: {sum(p.numel() for p in self.critic.parameters()):,} parameters")
+        print("Trainable residual parameters:")
+        print(f"  Residual Actor: {sum(p.numel() for p in self.residual_actor.parameters()):,} parameters")
+        print(f"  Residual Critic: {sum(p.numel() for p in self.residual_critic.parameters()):,} parameters")
 
     def _initialize_residual_networks(self):
         """Initialize the residual actor and critic near zero."""
@@ -186,7 +186,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                         std=self.residual_final_init_std,
                     )
                     nn.init.constant_(layer.bias, self.residual_bias_init)
-                    print(f"  零初始化最后层: {layer}")
+                    print(f"  Initialized final layer near zero: {layer}")
                 else:
                     nn.init.normal_(
                         layer.weight,
@@ -195,7 +195,7 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
                     )
                     nn.init.constant_(layer.bias, self.residual_bias_init)
         
-        print("初始化 Residual 网络:")
+        print("Initializing residual networks:")
         
         print("- Residual Actor:")
         for i, layer in enumerate(self.residual_actor):
@@ -218,21 +218,21 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
             residual_actor_out = self.residual_actor(dummy_obs)
             residual_critic_out = self.residual_critic(dummy_obs_critic)
             
-            print("初始化验证:")
-            print(f"  Residual Actor 输出范围: [{residual_actor_out.min():.6f}, {residual_actor_out.max():.6f}]")
-            print(f"  Residual Actor 平均绝对值: {residual_actor_out.abs().mean():.6f}")
-            print(f"  Residual Critic 输出范围: [{residual_critic_out.min():.6f}, {residual_critic_out.max():.6f}]")
-            print(f"  Residual Critic 平均绝对值: {residual_critic_out.abs().mean():.6f}")
+            print("Initialization verification:")
+            print(f"  Residual Actor range: [{residual_actor_out.min():.6f}, {residual_actor_out.max():.6f}]")
+            print(f"  Residual Actor mean absolute value: {residual_actor_out.abs().mean():.6f}")
+            print(f"  Residual Critic range: [{residual_critic_out.min():.6f}, {residual_critic_out.max():.6f}]")
+            print(f"  Residual Critic mean absolute value: {residual_critic_out.abs().mean():.6f}")
             
             if residual_actor_out.abs().mean() < 1e-5:
-                print("  ✅ Residual Actor 成功初始化为接近零")
+                print("  Residual Actor was initialized near zero")
             else:
-                print("  ⚠️  Residual Actor 初始化可能有问题")
+                print("  Warning: Residual Actor initialization may be incorrect")
                 
             if residual_critic_out.abs().mean() < 1e-5:
-                print("  ✅ Residual Critic 成功初始化为接近零")
+                print("  Residual Critic was initialized near zero")
             else:
-                print("  ⚠️  Residual Critic 初始化可能有问题")
+                print("  Warning: Residual Critic initialization may be incorrect")
 
     @staticmethod
     def init_weights(sequential, scales):

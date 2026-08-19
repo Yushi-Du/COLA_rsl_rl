@@ -14,7 +14,9 @@ Install it from the release checkout so imports resolve under the package name
 
 ```bash
 python -m pip uninstall -y rsl-rl-lib rsl_rl
-python -m pip install -e ./my_rsl_rl
+python -m pip install -e ./rsl_rl
 ```
 
-The parent repository's release validator enforces the expected file set.
+COLA-specific modifications are released under the MIT License. Portions
+derived from RSL-RL remain subject to the upstream BSD-3-Clause license in
+`THIRD_PARTY_LICENSES/rsl_rl-BSD-3-Clause.txt`.

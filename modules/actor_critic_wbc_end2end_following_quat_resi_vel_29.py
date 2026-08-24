@@ -25,6 +25,8 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         num_actions,
         actor_hidden_dims=[256, 256, 256],
         critic_hidden_dims=[256, 256, 256],
+        residual_actor_hidden_dims=None,
+        residual_critic_hidden_dims=None,
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
@@ -61,6 +63,22 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.residual_hidden_init_std = residual_hidden_init_std
         self.residual_final_init_std = residual_final_init_std
         self.residual_bias_init = residual_bias_init
+        residual_actor_hidden_dims = (
+            actor_hidden_dims
+            if residual_actor_hidden_dims is None
+            else residual_actor_hidden_dims
+        )
+        residual_critic_hidden_dims = (
+            critic_hidden_dims
+            if residual_critic_hidden_dims is None
+            else residual_critic_hidden_dims
+        )
+        if not residual_actor_hidden_dims or not residual_critic_hidden_dims:
+            raise ValueError("Residual hidden-dimension lists must not be empty")
+        if any(width <= 0 for width in residual_actor_hidden_dims):
+            raise ValueError("Residual actor hidden dimensions must be positive")
+        if any(width <= 0 for width in residual_critic_hidden_dims):
+            raise ValueError("Residual critic hidden dimensions must be positive")
         if base_privileged_obs_per_frame < 0:
             raise ValueError("base_privileged_obs_per_frame must be non-negative")
         self.base_privileged_obs_per_frame = base_privileged_obs_per_frame
@@ -97,13 +115,22 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.prev_action_idx = 4+14+3+3+29+29+29
 
         residual_actor_layers = []
-        residual_actor_layers.append(nn.Linear(self.residual_actor_obs_dim, actor_hidden_dims[0]))
+        residual_actor_layers.append(
+            nn.Linear(self.residual_actor_obs_dim, residual_actor_hidden_dims[0])
+        )
         residual_actor_layers.append(activation)
-        for layer_index in range(len(actor_hidden_dims)):
-            if layer_index == len(actor_hidden_dims) - 1:
-                residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], num_actions))
+        for layer_index in range(len(residual_actor_hidden_dims)):
+            if layer_index == len(residual_actor_hidden_dims) - 1:
+                residual_actor_layers.append(
+                    nn.Linear(residual_actor_hidden_dims[layer_index], num_actions)
+                )
             else:
-                residual_actor_layers.append(nn.Linear(actor_hidden_dims[layer_index], actor_hidden_dims[layer_index + 1]))
+                residual_actor_layers.append(
+                    nn.Linear(
+                        residual_actor_hidden_dims[layer_index],
+                        residual_actor_hidden_dims[layer_index + 1],
+                    )
+                )
                 residual_actor_layers.append(activation)
         self.residual_actor = nn.Sequential(*residual_actor_layers)
 
@@ -130,13 +157,22 @@ class ActorCriticWbcEnd2endFollowingWholePipeQuatResiVel29(nn.Module):
         self.critic = nn.Sequential(*critic_layers)
 
         residual_critic_layers = []
-        residual_critic_layers.append(nn.Linear(self.residual_critic_obs_dim, critic_hidden_dims[0]))
+        residual_critic_layers.append(
+            nn.Linear(self.residual_critic_obs_dim, residual_critic_hidden_dims[0])
+        )
         residual_critic_layers.append(activation)
-        for layer_index in range(len(critic_hidden_dims)):
-            if layer_index == len(critic_hidden_dims) - 1:
-                residual_critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], 1))
+        for layer_index in range(len(residual_critic_hidden_dims)):
+            if layer_index == len(residual_critic_hidden_dims) - 1:
+                residual_critic_layers.append(
+                    nn.Linear(residual_critic_hidden_dims[layer_index], 1)
+                )
             else:
-                residual_critic_layers.append(nn.Linear(critic_hidden_dims[layer_index], critic_hidden_dims[layer_index + 1]))
+                residual_critic_layers.append(
+                    nn.Linear(
+                        residual_critic_hidden_dims[layer_index],
+                        residual_critic_hidden_dims[layer_index + 1],
+                    )
+                )
                 residual_critic_layers.append(activation)
         self.residual_critic = nn.Sequential(*residual_critic_layers)
 

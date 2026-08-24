@@ -22,6 +22,7 @@ class StudentTeacherDistill(nn.Module):
         num_actions,
         student_hidden_dims=[256, 256, 256],
         teacher_hidden_dims=[256, 256, 256],
+        teacher_residual_hidden_dims=None,
         activation="elu",
         init_noise_std=0.1,
         noise_std_type="scalar",
@@ -67,7 +68,25 @@ class StudentTeacherDistill(nn.Module):
                 student_layers.append(activation)
         self.student = nn.Sequential(*student_layers)
 
-        self._build_residual_teacher(num_teacher_obs, num_actions, teacher_hidden_dims, activation)
+        teacher_residual_hidden_dims = (
+            teacher_hidden_dims
+            if teacher_residual_hidden_dims is None
+            else teacher_residual_hidden_dims
+        )
+        if not teacher_hidden_dims or not teacher_residual_hidden_dims:
+            raise ValueError("Teacher hidden-dimension lists must not be empty")
+        if any(width <= 0 for width in teacher_hidden_dims):
+            raise ValueError("Teacher base hidden dimensions must be positive")
+        if any(width <= 0 for width in teacher_residual_hidden_dims):
+            raise ValueError("Teacher residual hidden dimensions must be positive")
+
+        self._build_residual_teacher(
+            num_teacher_obs,
+            num_actions,
+            teacher_hidden_dims,
+            teacher_residual_hidden_dims,
+            activation,
+        )
 
         print(f"Student MLP: {self.student}")
         print(f"Teacher: {self.teacher}")
@@ -76,7 +95,14 @@ class StudentTeacherDistill(nn.Module):
         self.distribution = None
         Normal.set_default_validate_args(False)
 
-    def _build_residual_teacher(self, num_teacher_obs, num_actions, teacher_hidden_dims, activation):
+    def _build_residual_teacher(
+        self,
+        num_teacher_obs,
+        num_actions,
+        teacher_hidden_dims,
+        teacher_residual_hidden_dims,
+        activation,
+    ):
 
         self.teacher_residual_obs_dim = num_teacher_obs
         self.teacher_base_obs_dim = (
@@ -89,13 +115,27 @@ class StudentTeacherDistill(nn.Module):
             )
         
         teacher_residual_actor_layers = []
-        teacher_residual_actor_layers.append(nn.Linear(self.teacher_residual_obs_dim, teacher_hidden_dims[0]))
+        teacher_residual_actor_layers.append(
+            nn.Linear(
+                self.teacher_residual_obs_dim,
+                teacher_residual_hidden_dims[0],
+            )
+        )
         teacher_residual_actor_layers.append(activation)
-        for layer_index in range(len(teacher_hidden_dims)):
-            if layer_index == len(teacher_hidden_dims) - 1:
-                teacher_residual_actor_layers.append(nn.Linear(teacher_hidden_dims[layer_index], num_actions))
+        for layer_index in range(len(teacher_residual_hidden_dims)):
+            if layer_index == len(teacher_residual_hidden_dims) - 1:
+                teacher_residual_actor_layers.append(
+                    nn.Linear(
+                        teacher_residual_hidden_dims[layer_index], num_actions
+                    )
+                )
             else:
-                teacher_residual_actor_layers.append(nn.Linear(teacher_hidden_dims[layer_index], teacher_hidden_dims[layer_index + 1]))
+                teacher_residual_actor_layers.append(
+                    nn.Linear(
+                        teacher_residual_hidden_dims[layer_index],
+                        teacher_residual_hidden_dims[layer_index + 1],
+                    )
+                )
                 teacher_residual_actor_layers.append(activation)
         teacher_residual_actor = nn.Sequential(*teacher_residual_actor_layers)
         
